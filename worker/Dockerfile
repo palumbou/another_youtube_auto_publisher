@@ -1,10 +1,11 @@
 FROM python:3.12-slim
 
+# gcc only for the webrtcvad build, purged afterwards
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg gcc libc6-dev \
+    && pip install --no-cache-dir boto3 webrtcvad \
+    && apt-get purge -y --auto-remove gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir boto3 webrtcvad
 
 WORKDIR /app
 COPY worker.py .
