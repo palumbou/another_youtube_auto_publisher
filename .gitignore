@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Local artifacts
+*.mp4
+*.mkv
+*.mov
+*.avi
+.samples/
+client_secret*.json
+oauth_token*.json
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+infra/build/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

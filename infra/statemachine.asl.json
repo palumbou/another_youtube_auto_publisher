@@ -1,0 +1,379 @@
+{
+  "Comment": "another-youtube-auto-publisher: intake -> probe -> (transcribe) -> analyze -> cut -> review",
+  "StartAt": "EntryChoice",
+  "TimeoutSeconds": 21600,
+  "States": {
+    "EntryChoice": {
+      "Type": "Choice",
+      "Comment": "The review UI restarts jobs from Analyze, reusing probe artifacts and transcript",
+      "Choices": [
+        {
+          "Variable": "$.reanalyze",
+          "IsPresent": true,
+          "Next": "Analyze"
+        }
+      ],
+      "Default": "Intake"
+    },
+    "Intake": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "intake",
+          "detail.$": "$.detail"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "PipelineFailed"
+        }
+      ],
+      "Next": "SkipCheck"
+    },
+    "SkipCheck": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.skip",
+          "BooleanEquals": true,
+          "Next": "Skipped"
+        }
+      ],
+      "Default": "Probe"
+    },
+    "Skipped": {
+      "Type": "Succeed"
+    },
+    "Probe": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${cluster_arn}",
+        "TaskDefinition": "${task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ${subnets},
+            "SecurityGroups": ["${security_group}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "worker",
+              "Environment": [
+                { "Name": "MODE", "Value": "probe" },
+                { "Name": "JOB_ID", "Value.$": "$.job_id" },
+                { "Name": "VIDEO_KEY", "Value.$": "$.video_key" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "ProbeSummary"
+    },
+    "ProbeSummary": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "probe_summary",
+          "job_id.$": "$.job_id",
+          "language_override.$": "$.language_override"
+        }
+      },
+      "ResultSelector": {
+        "has_speech.$": "$.Payload.has_speech",
+        "audio_uri.$": "$.Payload.audio_uri",
+        "transcript_key.$": "$.Payload.transcript_key",
+        "language.$": "$.Payload.language",
+        "identify_language.$": "$.Payload.identify_language"
+      },
+      "ResultPath": "$.summary",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "HasSpeech"
+    },
+    "HasSpeech": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.summary.has_speech",
+          "BooleanEquals": true,
+          "Next": "TranscribeMode"
+        }
+      ],
+      "Default": "Analyze"
+    },
+    "TranscribeMode": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.summary.identify_language",
+          "BooleanEquals": true,
+          "Next": "StartTranscriptionAuto"
+        }
+      ],
+      "Default": "StartTranscriptionWithLanguage"
+    },
+    "StartTranscriptionAuto": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:transcribe:startTranscriptionJob",
+      "Parameters": {
+        "TranscriptionJobName.$": "States.Format('{}-{}', $.job_id, $$.Execution.Name)",
+        "IdentifyLanguage": true,
+        "Media": {
+          "MediaFileUri.$": "$.summary.audio_uri"
+        },
+        "OutputBucketName": "${bucket}",
+        "OutputKey.$": "$.summary.transcript_key"
+      },
+      "ResultPath": "$.transcription",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "WaitForTranscript"
+    },
+    "StartTranscriptionWithLanguage": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:transcribe:startTranscriptionJob",
+      "Parameters": {
+        "TranscriptionJobName.$": "States.Format('{}-{}', $.job_id, $$.Execution.Name)",
+        "LanguageCode.$": "$.summary.language",
+        "Media": {
+          "MediaFileUri.$": "$.summary.audio_uri"
+        },
+        "OutputBucketName": "${bucket}",
+        "OutputKey.$": "$.summary.transcript_key"
+      },
+      "ResultPath": "$.transcription",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "WaitForTranscript"
+    },
+    "WaitForTranscript": {
+      "Type": "Wait",
+      "Seconds": 15,
+      "Next": "CheckTranscript"
+    },
+    "CheckTranscript": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:transcribe:getTranscriptionJob",
+      "Parameters": {
+        "TranscriptionJobName.$": "$.transcription.TranscriptionJob.TranscriptionJobName"
+      },
+      "ResultPath": "$.transcription",
+      "Retry": [
+        {
+          "ErrorEquals": ["Transcribe.ThrottlingException", "Transcribe.InternalFailureException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "TranscriptDone"
+    },
+    "TranscriptDone": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.transcription.TranscriptionJob.TranscriptionJobStatus",
+          "StringEquals": "COMPLETED",
+          "Next": "Analyze"
+        },
+        {
+          "Variable": "$.transcription.TranscriptionJob.TranscriptionJobStatus",
+          "StringEquals": "FAILED",
+          "Next": "TranscriptFailed"
+        }
+      ],
+      "Default": "WaitForTranscript"
+    },
+    "TranscriptFailed": {
+      "Type": "Pass",
+      "Parameters": {
+        "Error": "TranscribeFailed",
+        "Cause.$": "$.transcription.TranscriptionJob.FailureReason"
+      },
+      "ResultPath": "$.error",
+      "Next": "RecordFailure"
+    },
+    "Analyze": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${analyze_lambda_arn}",
+        "Payload": {
+          "job_id.$": "$.job_id",
+          "prompt.$": "$.prompt",
+          "transcript_key.$": "$.summary.transcript_key"
+        }
+      },
+      "ResultSelector": {
+        "plan_key.$": "$.Payload.plan_key",
+        "num_shorts.$": "$.Payload.num_shorts"
+      },
+      "ResultPath": "$.plan",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "Cut"
+    },
+    "Cut": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${cluster_arn}",
+        "TaskDefinition": "${task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ${subnets},
+            "SecurityGroups": ["${security_group}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "worker",
+              "Environment": [
+                { "Name": "MODE", "Value": "cut" },
+                { "Name": "JOB_ID", "Value.$": "$.job_id" },
+                { "Name": "VIDEO_KEY", "Value.$": "$.video_key" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "Next": "Finalize"
+    },
+    "Finalize": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "finalize",
+          "job_id.$": "$.job_id"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "End": true
+    },
+    "RecordFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "fail",
+          "job_id.$": "$.job_id",
+          "error.$": "$.error"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "PipelineFailed"
+    },
+    "PipelineFailed": {
+      "Type": "Fail",
+      "Error": "PipelineFailed",
+      "Cause": "See the job record in DynamoDB and the execution history."
+    }
+  }
+}
