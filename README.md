@@ -3,153 +3,113 @@
 
 # another-youtube-auto-publisher
 
-Fully automated YouTube publishing on AWS: drop a raw video in S3, the pipeline
-analyzes it with Claude (Bedrock vision), extracts meaningful Shorts, generates
-English metadata, and publishes everything on a daily cadence after a human
-review step.
+Review-first YouTube publishing pipeline on AWS. A producer uploads a master video
+and a manifest under `incoming/{project}/{job}/` and writes `READY` last; the
+pipeline validates the job against the versioned contract, transcribes and analyses
+it, renders 9:16 Shorts, and presents everything in a private console. Nothing is
+uploaded until the owner approves it; approved assets are uploaded **private**,
+on a schedule, through the owner's own OAuth authorization.
 
 > **Available languages**: [English (current)](README.md) | [Italiano](README.it.md)
+
+## Hard rules
+
+- Only a `READY` marker created at or after the immutable `cutover_at` triggers a
+  job. Existing objects and existing channel videos are never imported or crawled.
+- The manifest (`contracts/video-job-manifest/1.0.0/schema.json`) is authoritative
+  for question boundaries, rights and editorial flags; analysis may enrich, never
+  override.
+- Human approval is mandatory per asset. The publisher never flips a video public;
+  `publishAt` is requested only when the Google API project is marked audited.
+- A kill switch (`PUBLISH_KILL_SWITCH`, on by default) pauses publishing without
+  touching review.
+- No credentials in Git. OAuth secrets live in Secrets Manager; only the publish
+  function can read them.
 
 ## Architecture
 
 ```mermaid
-flowchart TB
-    U[/"video upload<br/>s3://bucket/incoming/"/] -->|EventBridge| SM
-
-    subgraph SM["Step Functions pipeline"]
-        direction TB
-        IN["intake (Lambda)"] --> PB["probe (Fargate, ffmpeg)"]
-        PB --> PS["probe_summary (Lambda)"]
-        PS -->|speech| TR["Amazon Transcribe"]
-        TR --> AN["analyze (Lambda,<br/>Bedrock / Claude)"]
-        PS -->|no speech| AN
-        AN --> CT["cut (Fargate, ffmpeg)"]
-        CT --> FN["finalize (Lambda)"]
-    end
-
-    FN --> DB[("DynamoDB jobs")]
-    UI["review UI<br/>(Lambda Function URL)"] <--> DB
-    UI -. re-analyze .-> SM
-    EB["EventBridge<br/>daily schedule"] --> PU["publish (Lambda)"]
-    PU <--> DB
-    PU -->|"resumable upload<br/>streamed from S3"| YT(("YouTube"))
+flowchart TD
+    P[/"producer job<br/>incoming/{project}/{job}/… + READY"/] --> EB["EventBridge rule<br/>(READY suffix)"]
+    EB --> Q["SQS + DLQ"] --> IN["ingest Lambda<br/>contract, hash, version, cutover, idempotent create"]
+    IN --> DB[("DynamoDB<br/>jobs · revisions · schedules · publications · audit")]
+    IN --> SF["Step Functions"] --> W["Fargate worker<br/>validate → transcript → grounded analysis → shorts → verify"]
+    W --> S3[("private S3<br/>work/ ready/")]
+    W --> DB
+    C["review console<br/>Cognito + JWT authorizer + WAF IP allowlist"] <--> DB
+    C -. reject with scope .-> SF
+    SCH["EventBridge Scheduler"] --> PUB["publish Lambda<br/>approval gate, caps, quota, kill switch"]
+    PUB --> YT(("YouTube Data API<br/>private upload"))
 ```
 
-The worker and the Lambdas exchange artifacts through the bucket
-(`work/<job>/` for probe output, mosaics, transcript and plan; `ready/<job>/`
-for the rendered 9:16 clips).
-
-## Flow
-
-1. **intake** — the S3 event creates the job record (an optional
-   `<video>.json` sidecar provides `youtube_id` for a video already on
-   YouTube, `language` to skip language identification, `prompt` as free-text
-   guidance for the analysis).
-2. **probe** (Fargate, ffmpeg) — metadata, scene changes, loudness curve, VAD
-   speech detection, timestamped frame mosaics, audio track.
-3. **transcribe** — Amazon Transcribe, only when speech was detected.
-4. **analyze** — Claude on Bedrock reads the mosaics + transcript and plans
-   Short segments plus English metadata for everything.
-5. **cut** (Fargate, ffmpeg) — renders each segment as a 9:16 Short (blurred
-   background, original frame centered, content untouched).
-6. **finalize** — job goes to `PENDING_REVIEW`.
-7. **review** — approve in the web UI, or tweak the prompt and re-analyze.
-8. **publish** (daily) — main video uploaded unlisted, then one Short per day
-   (each linking the full video); when all Shorts are live the main video goes
-   public and the job is `DONE`.
-
-Job lifecycle: `ANALYZING → PENDING_REVIEW → APPROVED → PUBLISHING → DONE`
-(`ERROR` from any active state, re-analyze allowed from review and error).
+Job states: `INGESTED → VALIDATING → ANALYZING → GENERATING_ASSETS → AWAITING_REVIEW`,
+then `REPROCESS_REQUESTED` (scopes `METADATA_ONLY`, `SHORTS_ONLY`,
+`TRANSCRIPT_AND_ANALYSIS`, `FULL`) or `APPROVED → SCHEDULED → UPLOADING_PRIVATE →
+VERIFYING → UPLOADED_PRIVATE | PUBLISHED`; `FAILED` and `CANCELLED` as documented in
+`autopublisher/domain.py`. Every revision is immutable and every action is audited.
 
 ## Layout
 
 | Path | Role |
 |---|---|
-| `autopublisher/models.py` | Pure domain model: jobs, Shorts, transitions, YouTube metadata rules |
-| `autopublisher/storage.py` | DynamoDB persistence |
-| `autopublisher/pipeline.py` | Glue Lambda for Step Functions (intake / probe_summary / finalize / fail) |
-| `autopublisher/analyze.py` | Bedrock analysis Lambda |
-| `autopublisher/publish.py` | Scheduled publisher Lambda |
-| `autopublisher/youtube.py` | Stdlib-only YouTube Data API client (resumable uploads streamed from S3) |
-| `autopublisher/webui.py` | Review web UI (Lambda Function URL, server-rendered) |
-| `worker/` | Fargate ffmpeg worker (probe / cut) + Dockerfile |
-| `scripts/authorize.py` | One-time local OAuth flow to obtain the YouTube refresh token |
-| `infra/` | Terraform: bucket, jobs table, Lambdas, Fargate task, Step Functions, EventBridge |
+| `contracts/video-job-manifest/1.0.0/` | JSON Schema, valid/invalid fixtures, event fixtures |
+| `autopublisher/contract.py` | schema + semantic validation with stable error codes |
+| `autopublisher/ingest.py` | READY-driven, idempotent ingestion |
+| `autopublisher/domain.py`, `jobstore.py` | states, revisions, audit; local JSON and DynamoDB stores |
+| `autopublisher/providers/` | transcription and analysis interfaces, mock/AWS implementations, grounding |
+| `autopublisher/shorts.py`, `render.py`, `processing.py` | manifest-first Shorts, ffmpeg rendering and verification, revision runner |
+| `autopublisher/review.py`, `console.py` | review actions and the server-rendered console |
+| `autopublisher/publishing.py`, `youtube.py` | approval-gated publisher, fake and real adapters, Data API client |
+| `autopublisher/local.py` | one-command local stack and CLI |
+| `autopublisher/pipeline.py`, `worker/` | Lambda entry points and the Fargate worker |
+| `infra/` | OpenTofu/Terraform stack |
+| `docs/` | discovery, reconciliation, ADRs, runbook, cost estimate, release readiness, evidence |
 
-## Review UI
-
-`terraform output webui_url` prints a link with a `?token=…` — open it once
-and a cookie takes over. The UI lists the jobs, previews each Short (presigned
-S3 video), shows titles/descriptions/tags and the model's reasoning, and
-offers two actions: **Approve** (starts publishing) and **Re-analyze** with an
-optional prompt (restarts the pipeline from the analysis step, reusing probe
-artifacts and transcript).
-
-## YouTube credentials
-
-1. Google Cloud console → create an OAuth client (type **Desktop app**),
-   download `client_secret.json`.
-2. `python scripts/authorize.py` — consent in the browser, get `oauth_token.json`.
-3. `aws secretsmanager create-secret --name youtube-publisher --secret-string file://oauth_token.json`
-4. Point the publisher Lambda at it: `YOUTUBE_SECRET=youtube-publisher`
-   (Terraform default already matches).
-
-## Environment variables
-
-| Variable | Used by | Meaning |
-|---|---|---|
-| `BUCKET` | all | the pipeline S3 bucket |
-| `JOBS_TABLE` | all | DynamoDB jobs table |
-| `MODEL_ID` | analyze | Bedrock model id (a Claude vision model) |
-| `MIN_SHORTS` / `MAX_SHORTS` | analyze | segment count bounds (default 2 / 6) |
-| `YOUTUBE_SECRET` | publish | Secrets Manager name/ARN with the OAuth JSON |
-| `WEBUI_TOKEN`, `STATE_MACHINE_ARN` | webui | access token and pipeline to restart |
-| `MODE`, `JOB_ID`, `VIDEO_KEY`, `PLAN_KEY` | worker | set by the Step Functions Fargate task |
-
-## Local development
-
-The worker runs without AWS:
+## Local development (no AWS, no real publishing)
 
 ```bash
-python worker/worker.py probe --local video.mp4 --workdir /tmp/probe
-python worker/worker.py cut   --local video.mp4 --workdir /tmp/probe  # needs plan.json in workdir
+make setup                      # uv venv + dev dependencies
+make test                       # ruff + pytest (real ffmpeg renders included)
+make e2e                        # generated fixture through ingest → review → fake upload
+make serve                      # console on http://127.0.0.1:8080 with a seeded owner
 ```
 
-Tests cover the pure layers (model, plan cleaning, YouTube client protocol,
-web UI routing):
+Drop a job into `./local/bucket/incoming/quiz-al-volo/<job_id>/` (source, manifest,
+then `READY`): the poller ingests and processes it. CLI equivalents:
 
 ```bash
-pip install -e ".[dev]"
-pytest
+python -m autopublisher.local ingest   --bucket-root B --state-root S
+python -m autopublisher.local status   --state-root S [--job ID]
+python -m autopublisher.local confirm  --state-root S --job ID --asset master
+python -m autopublisher.local approve  --state-root S --job ID --master --short short-01
+python -m autopublisher.local reject   --bucket-root B --state-root S --job ID --reason "…" --scope SHORTS_ONLY
+python -m autopublisher.local schedule --state-root S --job ID --asset master --at 2026-10-01T10:00
+python -m autopublisher.local publish  --bucket-root B --state-root S --now 2026-10-01T10:00:00Z   # fake adapter
 ```
 
-## Deploy
+`.env.example` lists every setting. `LOCAL_MODE` is refused outside
+`ENVIRONMENT=local`; `YOUTUBE_MODE=real` is refused together with `LOCAL_MODE`.
 
-Everything is Terraform (`infra/`); region and credentials come from the
-environment (`AWS_REGION` / profile).
+## Deploy (owner action; needs authorization and a budget)
 
 ```bash
-cd infra
-terraform init
-terraform apply                       # see variables.tf for the knobs
-# build & push the worker image (exact commands in the output):
-terraform output worker_image_push
-# YouTube credentials (once): see the section above, then
-aws secretsmanager create-secret --name youtube-publisher --secret-string file://oauth_token.json
-# review UI link (keep it private, it embeds the access token):
-terraform output webui_url
+scripts/build_layer.sh                        # Lambda dependency layer
+cd infra && tofu init && tofu plan -var-file=prod.tfvars   # cutover_at, review_ip_allowlist, owner_email are required
+tofu apply -var-file=prod.tfvars
+tofu output worker_image_push                 # build and push the worker image
+python scripts/authorize.py                   # one-time owner consent → put the JSON into the youtube-publisher secret
 ```
 
-Then drop a video: `aws s3 cp video.mp4 s3://<bucket>/incoming/`.
+Publishing stays off until `publish_kill_switch=false`, `publish_schedule_enabled=true`
+and `youtube_mode=real` are set deliberately. See `docs/operations-runbook.md`.
 
-Notes:
-- `model_id` defaults to an `eu.` Bedrock inference profile — switch the prefix
-  to `us.`/`apac.` to match your region, and enable model access in Bedrock.
-- The worker runs in the default VPC with a public IP (to pull the image and
-  reach S3); pass `vpc_id`/`subnet_ids` to place it elsewhere.
-- The sidecar `language` value is passed to Amazon Transcribe, so use a locale
-  code like `it-IT` or `en-US`, not a bare `it`.
-- The publisher fires daily at 15:00 UTC (`publish_schedule`).
+## Documentation
+
+- `docs/repository-reconciliation-report.md`, `docs/discovery-report.md`
+- `docs/adr/` — decisions and rejected alternatives
+- `docs/operations-runbook.md`, `docs/cost-estimate.md`
+- `docs/release-readiness.md` — every check with its status and evidence
+- `THIRD_PARTY_NOTICES.md`
 
 ## License
 
