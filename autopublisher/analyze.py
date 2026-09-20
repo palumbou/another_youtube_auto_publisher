@@ -14,6 +14,7 @@ import os
 
 import boto3
 
+from autopublisher import storage
 from autopublisher.models import (
     MAX_SHORT_SECONDS,
     STATUS_ANALYZING,
@@ -22,7 +23,6 @@ from autopublisher.models import (
     sanitize_tags,
     sanitize_title,
 )
-from autopublisher import storage
 
 MAX_TRANSCRIPT_CHARS = 8000
 
@@ -69,15 +69,15 @@ PLAN_TOOL = {
 def build_prompt(probe: dict, transcript: str, language: str, user_prompt: str,
                  min_shorts: int, max_shorts: int) -> str:
     lines = [
-        "You are planning the YouTube publication of a raw video (no editing allowed: "
-        "segments are published exactly as they are).",
+        ("You are planning the YouTube publication of a raw video (no editing allowed: "
+        "segments are published exactly as they are)."),
         "",
-        f"The attached images are frame mosaics sampled every {probe['mosaic_interval_s']}s, "
+        (f"The attached images are frame mosaics sampled every {probe['mosaic_interval_s']}s, "
         f"grid {probe['mosaic_grid']} read left-to-right then top-to-bottom, in chronological "
-        "order. Each tile has its timestamp burned in at the bottom-left.",
+        "order. Each tile has its timestamp burned in at the bottom-left."),
         "",
-        f"Video: {probe['duration']:.0f}s, {probe['width']}x{probe['height']}, "
-        f"{probe['fps']}fps, audio: {probe['has_audio']}, speech detected: {probe['has_speech']}.",
+        (f"Video: {probe['duration']:.0f}s, {probe['width']}x{probe['height']}, "
+        f"{probe['fps']}fps, audio: {probe['has_audio']}, speech detected: {probe['has_speech']}."),
     ]
     if probe.get("scene_changes"):
         scenes = ", ".join(f"{t:.0f}" for t in probe["scene_changes"][:200])
@@ -90,15 +90,15 @@ def build_prompt(probe: dict, transcript: str, language: str, user_prompt: str,
         lines += ["", f"Speech transcript (language: {language or 'unknown'}):", transcript]
     lines += [
         "",
-        f"Task: choose between {min_shorts} and {max_shorts} segments that work as YouTube "
+        (f"Task: choose between {min_shorts} and {max_shorts} segments that work as YouTube "
         "Shorts — self-contained, visually interesting moments a viewer without context "
         "would watch to the end. Prefer starting/ending near scene changes or natural "
         "pauses. Segments must not overlap. Ideal length 20-90 seconds, hard maximum "
-        f"{MAX_SHORT_SECONDS} seconds. If the video is monotonous, pick fewer, shorter segments.",
+        f"{MAX_SHORT_SECONDS} seconds. If the video is monotonous, pick fewer, shorter segments."),
         "",
-        "Also produce metadata for the FULL video. All titles, descriptions and tags must "
+        ("Also produce metadata for the FULL video. All titles, descriptions and tags must "
         "be in ENGLISH regardless of the video language. Descriptions: 1-3 sentences, "
-        "factual, no hashtags spam, no clickbait. Tags: 5-15 relevant terms per item.",
+        "factual, no hashtags spam, no clickbait. Tags: 5-15 relevant terms per item."),
     ]
     if user_prompt:
         lines += ["", "Extra instructions from the channel owner (they take priority):", user_prompt]

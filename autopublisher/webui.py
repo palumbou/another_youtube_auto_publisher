@@ -142,8 +142,8 @@ def tags_html(tags: list[str]) -> str:
 
 def render_job(job: Job) -> str:
     parts = [f"<h2>{esc(job.job_id)} {badge(job.status)}</h2>",
-             f"<p><small>{esc(job.video_key)} · created {esc(job.created_at)} · "
-             f"language {esc(job.language or 'unknown')}</small></p>"]
+             (f"<p><small>{esc(job.video_key)} · created {esc(job.created_at)} · "
+             f"language {esc(job.language or 'unknown')}</small></p>")]
 
     if job.error:
         parts.append(f"<div class='error'>{esc(job.error)}</div>")

@@ -48,7 +48,7 @@ def main() -> None:
     code_holder: dict = {}
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
+        def do_GET(self):
             query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             code_holder.update({k: v[0] for k, v in query.items()})
             self.send_response(200)

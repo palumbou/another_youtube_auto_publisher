@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 
 import boto3
 
-from autopublisher.models import STATUS_ERROR, STATUS_PENDING_REVIEW, Job
 from autopublisher import storage
+from autopublisher.models import STATUS_ERROR, STATUS_PENDING_REVIEW, Job
 
 VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v")
 

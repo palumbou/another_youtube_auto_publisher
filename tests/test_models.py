@@ -1,3 +1,5 @@
+import pytest
+
 from autopublisher.models import (
     MAX_SHORT_SECONDS,
     MAX_TAGS_TOTAL_LEN,
@@ -15,8 +17,6 @@ from autopublisher.models import (
     sanitize_title,
     short_description_with_link,
 )
-
-import pytest
 
 
 def make_job(job_id="job-1", **kwargs) -> Job:
