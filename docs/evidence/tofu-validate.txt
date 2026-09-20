@@ -1,0 +1,19 @@
+$ tofu version
+OpenTofu v1.12.6
+on linux_amd64
+
+$ tofu fmt -check -recursive (exit 0)
+exit 0
+
+$ tofu init -backend=false -input=false
+Initializing provider plugins...
+- Installing hashicorp/aws v6.65.0...
+- Installing hashicorp/archive v2.8.1...
+- Installing hashicorp/random v3.9.1...
+OpenTofu has been successfully initialized!
+
+$ tofu validate
+Success! The configuration is valid.
+
+$ tofu plan: NOT RUN (no AWS credentials on this host, no deployment authorization)
+$ tofu apply: NOT RUN (BLOCKED: requires explicit deployment authorization and a recorded budget)

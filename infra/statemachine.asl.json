@@ -1,0 +1,73 @@
+{
+  "Comment": "another-youtube-auto-publisher: one processing revision per execution, in a Fargate task; stops at AWAITING_REVIEW",
+  "StartAt": "Process",
+  "TimeoutSeconds": 14400,
+  "States": {
+    "Process": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${cluster_arn}",
+        "TaskDefinition": "${task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ${subnets},
+            "SecurityGroups": ["${security_group}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "worker",
+              "Environment": [
+                { "Name": "MODE", "Value": "process" },
+                { "Name": "PROJECT_KEY", "Value.$": "$.project_key" },
+                { "Name": "JOB_ID", "Value.$": "$.job_id" },
+                { "Name": "SCOPE", "Value.$": "$.scope" },
+                { "Name": "REASON", "Value.$": "$.reason" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultPath": "$.task",
+      "Retry": [
+        {
+          "Comment": "Only capacity/placement errors are transient; a worker exit code is not retried blindly",
+          "ErrorEquals": ["ECS.AmazonECSException", "ECS.ClientException", "States.Timeout"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "RecordFailure"
+        }
+      ],
+      "End": true
+    },
+    "RecordFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ingest_lambda_arn}",
+        "Payload": {
+          "action": "fail",
+          "project_key.$": "$.project_key",
+          "job_id.$": "$.job_id",
+          "error.$": "$.error"
+        }
+      },
+      "Next": "Failed"
+    },
+    "Failed": {
+      "Type": "Fail",
+      "Cause": "processing task failed; the job is marked FAILED and can be redriven from the console"
+    }
+  }
+}
