@@ -24,6 +24,7 @@ class Caption:
     end_ms: int
     text: str
     kind: str = "TEXT"  # HOOK | QUESTION | ANSWER | EXPLANATION | TEXT
+    source_has_text: bool = False  # the master already renders this text (segment declares a text area)
 
 
 @dataclass
@@ -64,7 +65,8 @@ def _captions_from_manifest(manifest: dict, start_ms: int, end_ms: int) -> list[
         if seg["end_ms"] <= start_ms or seg["start_ms"] >= end_ms or not seg.get("text"):
             continue
         out.append(Caption(max(seg["start_ms"], start_ms) - start_ms, min(seg["end_ms"], end_ms) - start_ms,
-                           seg["text"], seg["type"] if seg["type"] in ("HOOK", "QUESTION", "ANSWER", "EXPLANATION") else "TEXT"))
+                           seg["text"], seg["type"] if seg["type"] in ("HOOK", "QUESTION", "ANSWER", "EXPLANATION") else "TEXT",
+                           source_has_text=bool(seg.get("text_safe_area") or seg.get("region_of_interest"))))
     return out
 
 

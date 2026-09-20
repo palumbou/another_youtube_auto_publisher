@@ -82,6 +82,7 @@ def render_plan(source: Path, info: MediaInfo, plans: list[ShortPlan], thumbnail
         out = outdir / f"{plan.candidate_id}.mp4"
         result = render_short(source, info, plan, out, encoder, log)
         report = verify_short(out, plan, log)
+        report["layout"], report["captions"] = result["layout"], result["captions"]
         reports[plan.candidate_id] = report
         media = report["media"]
         shorts.append(Asset(
@@ -90,7 +91,8 @@ def render_plan(source: Path, info: MediaInfo, plans: list[ShortPlan], thumbnail
             codec=media["video_codec"], size_bytes=result["size_bytes"], source_start_ms=plan.start_ms,
             source_end_ms=plan.end_ms, segment_ids=list(plan.segment_ids),
             quality={"ok": report["ok"], "problems": report["problems"], "loudness": report["loudness"],
-                     "black_bars": report["black_bars"], "warnings": plan.warnings},
+                     "black_bars": report["black_bars"], "warnings": plan.warnings,
+                     "layout": result["layout"], "captions": result["captions"]},
             metadata={"title_candidates": [plan.title_hint] if plan.title_hint else [],
                       "captions": [c.text for c in plan.captions]},
         ))
@@ -322,10 +324,11 @@ class Processor:
                 titles.append(candidate[:100])
         while len(titles) < 3 and titles:
             titles.append(titles[-1])
-        explanation = captions[-1] if captions else ""
+        # The description must not spoil the quiz: the question, then the master's
+        # (answer-free) description. The explanation stays in the video only.
         asset.metadata = {
             "title_candidates": titles[:3], "title": titles[0] if titles else "",
-            "description": (explanation + ("\n\n" + master.get("description", "") if master.get("description") else ""))[:5000],
+            "description": (question + ("\n\n" + master.get("description", "") if master.get("description") else ""))[:5000],
             "hashtags": list(master.get("hashtags", []))[:3], "tags": list(master.get("tags", []))[:15],
             "category": master.get("category", ""), "playlist": master.get("playlist", ""),
             "default_language": master.get("default_language", ""), "made_for_kids": master.get("made_for_kids", False),

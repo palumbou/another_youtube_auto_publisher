@@ -49,6 +49,8 @@ def test_full_run_reaches_awaiting_review_with_assets(env):
     assert revision.master_metadata["title"] and len(revision.master_metadata["title_candidates"]) == 3
     assert revision.master_metadata["privacy"] == "private"
     assert short.metadata["title"] and short.metadata["description"]
+    assert "Il Po" not in short.metadata["description"]  # no spoiler in the Short description either
+    assert short.quality["layout"]["scale"] > 0 and isinstance(short.quality["captions"], list)
     assert revision.thumbnails and env["store"].head(revision.thumbnails[0].key)
     states = [e.new_state for e in env["jobs"].list_audit(helpers.PROJECT, "qav-test-0001") if e.action == "STATE"]
     assert states == [domain.VALIDATING, domain.ANALYZING, domain.GENERATING_ASSETS, domain.AWAITING_REVIEW]

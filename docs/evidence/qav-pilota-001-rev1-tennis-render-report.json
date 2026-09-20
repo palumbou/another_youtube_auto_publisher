@@ -1,0 +1,43 @@
+{
+  "layout": {
+    "crop_w": 1080,
+    "crop_h": 1080,
+    "crop_x": 420,
+    "crop_y": 0,
+    "fg_w": 1080,
+    "fg_h": 1080,
+    "fg_x": 0,
+    "fg_y": 420,
+    "scale": 1.0
+  },
+  "captions": [
+    {
+      "caption": "Quale Grande Slam si disputa a Parigi?",
+      "kind": "QUESTION",
+      "burn": false,
+      "reason": "master already shows this text in the cut region and no free band exists"
+    },
+    {
+      "caption": "Roland Garros",
+      "kind": "ANSWER",
+      "burn": false,
+      "reason": "master already shows this text in the cut region and no free band exists"
+    },
+    {
+      "caption": "Il Roland Garros si gioca a Parigi, allo Stade Roland-Garros, ed è l'unico torne",
+      "kind": "EXPLANATION",
+      "burn": false,
+      "reason": "master already shows this text in the cut region and no free band exists"
+    }
+  ],
+  "black_bars": {
+    "checked": true,
+    "has_bars": false,
+    "detected": "1080x1920"
+  },
+  "loudness": {
+    "integrated_lufs": -14.8,
+    "true_peak_dbfs": -1.9
+  },
+  "problems": []
+}

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from autopublisher.media import MediaError, MediaInfo, ffprobe
-from autopublisher.shorts import SAFE_BOTTOM, SAFE_LEFT, SAFE_RIGHT, SAFE_TOP, ShortPlan
+from autopublisher.shorts import SAFE_BOTTOM, SAFE_TOP, ShortPlan
 
 FONT_CANDIDATES = (
     "/usr/share/fonts/google-noto/NotoSans-Bold.ttf",
@@ -74,65 +74,132 @@ def _wrap(text: str, width: int = 26) -> str:
     return "\n".join(lines[:6])
 
 
-def crop_filter(info: MediaInfo, crop_region: dict | None) -> str:
-    """Crop to the declared region, widened or narrowed to an exact 9:16 box that
-    stays inside the frame, so the output never needs black bars."""
+@dataclass(frozen=True)
+class Layout:
+    """Pixel-exact geometry of one Short: the crop taken from the source, the size the
+    crop is drawn at inside the 1080x1920 canvas, and its offset."""
+
+    crop_w: int
+    crop_h: int
+    crop_x: int
+    crop_y: int
+    fg_w: int
+    fg_h: int
+    fg_x: int
+    fg_y: int
+    scale: float
+
+    def map_x(self, source_x: float) -> float:
+        """Where a source column lands in the Short (for tests and reports)."""
+        return (source_x - self.crop_x) * self.scale + self.fg_x
+
+    def map_y(self, source_y: float) -> float:
+        return (source_y - self.crop_y) * self.scale + self.fg_y
+
+    def as_dict(self) -> dict:
+        return self.__dict__.copy()
+
+
+def layout(info: MediaInfo, crop_region: dict | None) -> Layout:
+    """Crop exactly the declared region (never tighter), fit it into the canvas without
+    exceeding it, centre it, and let a blurred copy fill the rest so no bar is black.
+
+    Rounding: x and y are floored, width and height are floored to even pixels
+    (a libx264/yuv420p requirement); the drawn size is floored to even pixels too.
+    A 1080x1080 region on a 1920x1080 master therefore maps 1:1 (scale 1.0)."""
     sw, sh = info.width, info.height
     if crop_region:
-        x, y = crop_region["x"] * sw, crop_region["y"] * sh
-        w, h = crop_region["width"] * sw, crop_region["height"] * sh
+        x = int(crop_region["x"] * sw)
+        y = int(crop_region["y"] * sh)
+        w = int(crop_region["width"] * sw) // 2 * 2
+        h = int(crop_region["height"] * sh) // 2 * 2
+        w, h = max(2, min(w, sw - x)), max(2, min(h, sh - y))
     else:
-        x, y, w, h = 0.0, 0.0, float(sw), float(sh)
-    # Adjust to 9:16 around the region's centre.
-    cx, cy = x + w / 2, y + h / 2
-    if w / h > 9 / 16:
-        w = h * 9 / 16
-    else:
-        h = w * 16 / 9
-    if h > sh:
-        h, w = float(sh), sh * 9 / 16
-    if w > sw:
-        w, h = float(sw), sw * 16 / 9
-    x = min(max(0.0, cx - w / 2), sw - w)
-    y = min(max(0.0, cy - h / 2), sh - h)
-    w, h = int(w) // 2 * 2, int(h) // 2 * 2
-    return f"crop={w}:{h}:{int(x)}:{int(y)},scale={OUT_W}:{OUT_H}:flags=lanczos"
+        x, y, w, h = 0, 0, sw // 2 * 2, sh // 2 * 2
+    scale = min(OUT_W / w, OUT_H / h)
+    fg_w, fg_h = int(w * scale) // 2 * 2, int(h * scale) // 2 * 2
+    fg_x, fg_y = (OUT_W - fg_w) // 2, (OUT_H - fg_h) // 2
+    return Layout(w, h, x, y, fg_w, fg_h, fg_x, fg_y, fg_w / w)
 
 
-def caption_filters(plan: ShortPlan, font: str) -> list[str]:
-    filters = []
-    box_w = int(OUT_W * (SAFE_RIGHT - SAFE_LEFT))
+def crop_filter(info: MediaInfo, crop_region: dict | None) -> str:
+    """filter_complex producing [v]: exact crop, blurred cover background, centred fit."""
+    lay = layout(info, crop_region)
+    return (f"[0:v]crop={lay.crop_w}:{lay.crop_h}:{lay.crop_x}:{lay.crop_y},split=2[bg][fg];"
+            f"[bg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},"
+            f"gblur=sigma=40,eq=brightness=-0.08[bgb];"
+            f"[fg]scale={lay.fg_w}:{lay.fg_h}:flags=lanczos[fgs];"
+            f"[bgb][fgs]overlay={lay.fg_x}:{lay.fg_y}:format=auto[v]")
+
+
+MIN_CAPTION_BAND = 160  # px of free canvas needed to burn a caption outside the picture
+
+
+def caption_plan(plan: ShortPlan, lay: Layout) -> list[dict]:
+    """Decide, per caption, whether and where to burn it. Captions must stay inside the
+    Shorts-safe band and must not cover text the master already shows (the segment
+    declared a text_safe_area / region_of_interest for it)."""
+    safe_top, safe_bottom = int(OUT_H * SAFE_TOP), int(OUT_H * SAFE_BOTTOM)
+    fg_top, fg_bottom = lay.fg_y, lay.fg_y + lay.fg_h
+    free_top = max(0, min(fg_top, safe_bottom) - safe_top)          # rows [safe_top, fg_top)
+    free_bottom = max(0, safe_bottom - max(fg_bottom, safe_top))     # rows (fg_bottom, safe_bottom]
+    decisions = []
     for cap in plan.captions:
+        if free_bottom >= MIN_CAPTION_BAND:
+            y, where = safe_bottom - MIN_CAPTION_BAND + 16, "below-picture"
+        elif free_top >= MIN_CAPTION_BAND:
+            y, where = safe_top + 16, "above-picture"
+        elif cap.source_has_text:
+            decisions.append({"caption": cap.text[:80], "kind": cap.kind, "burn": False, "reason":
+                              "master already shows this text in the cut region and no free band exists"})
+            continue
+        else:
+            y, where = safe_bottom - 220, "over-picture"
+        decisions.append({"caption": cap.text[:80], "kind": cap.kind, "burn": True, "y": y, "where": where})
+    return decisions
+
+
+def caption_filters(plan: ShortPlan, font: str, lay: Layout | None = None) -> tuple[list[str], list[dict]]:
+    lay = lay or Layout(0, 0, 0, 0, OUT_W, OUT_H, 0, 0, 1.0)
+    decisions = caption_plan(plan, lay)
+    filters = []
+    for cap in plan.captions:
+        decision = next((d for d in decisions if d["caption"] == cap.text[:80] and d["kind"] == cap.kind), None)
+        if not decision or not decision["burn"]:
+            continue
         text = _escape_drawtext(_wrap(cap.text))
         size = 60 if cap.kind in ("QUESTION", "HOOK") else 52
         colour = {"ANSWER": "0x2E7D32", "QUESTION": "white", "HOOK": "white"}.get(cap.kind, "white")
-        y = int(OUT_H * SAFE_TOP) if cap.kind in ("HOOK", "QUESTION") else int(OUT_H * (SAFE_BOTTOM - 0.22))
         start, end = cap.start_ms / 1000, cap.end_ms / 1000
         filters.append(
             f"drawtext=fontfile='{font}':text='{text}':fontsize={size}:fontcolor={colour}:"
             f"line_spacing=8:box=1:boxcolor=black@0.55:boxborderw=24:"
-            f"x=(w-text_w)/2:y={y}:enable='between(t,{start:.3f},{end:.3f})'"
+            f"x=(w-text_w)/2:y={decision['y']}:enable='between(t,{start:.3f},{end:.3f})'"
         )
-        _ = box_w
-    return filters
+    return filters, decisions
 
 
 def render_short(source: Path, info: MediaInfo, plan: ShortPlan, out: Path, encoder: str,
                  log: CommandLog, font: str | None = None) -> dict:
     font = font or find_font()
-    vf = ",".join([crop_filter(info, plan.crop_region), *caption_filters(plan, font), "format=yuv420p"])
+    lay = layout(info, plan.crop_region)
+    text_filters, decisions = caption_filters(plan, font, lay)
+    graph = crop_filter(info, plan.crop_region)
+    tail = ",".join([*text_filters, "format=yuv420p"])
+    graph = graph.replace("[v]", "[v0]") + f";[v0]{tail}[v]"
     start, end = plan.start_ms / 1000, plan.end_ms / 1000
     cmd = ["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error", "-y",
            "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(source)]
     if not info.has_audio:
         cmd += ["-f", "lavfi", "-t", f"{end - start:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
-    cmd += ["-vf", vf, "-map", "0:v:0", "-map", "0:a:0" if info.has_audio else "1:a:0",
+    cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a:0" if info.has_audio else "1:a:0",
             "-af", f"loudnorm=I={TARGET_LUFS}:TP=-1.5:LRA=11", "-c:v", encoder]
     cmd += ["-preset", "veryfast", "-crf", "20"] if encoder == "libx264" else ["-b:v", "6M"]
     cmd += ["-pix_fmt", "yuv420p", "-r", "30", "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
             "-movflags", "+faststart", "-shortest", str(out)]
     log.run(cmd)
-    return {"sha256": sha256_of(out), "size_bytes": out.stat().st_size, "filter": vf}
+    return {"sha256": sha256_of(out), "size_bytes": out.stat().st_size, "filter": graph,
+            "layout": lay.as_dict(), "captions": decisions}
 
 
 def render_thumbnail(source: Path, at_ms: int, out: Path, log: CommandLog) -> dict:
