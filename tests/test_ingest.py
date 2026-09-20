@@ -176,3 +176,12 @@ def test_rejections_never_leak_manifest_free_text(bucket, ingestor):
     result = ingestor().handle_ready(event())
     assert result.status == ingest.REJECTED
     assert "DO-NOT-LEAK" not in json.dumps(result.as_dict())
+
+
+def test_ingest_without_probe_records_declared_media(bucket, ingestor, tmp_path):
+    helpers.make_job_dir(bucket)
+    ing = ingestor()
+    ing.probe_media = False
+    result = ing.handle_ready(event())
+    assert result.status == ingest.CREATED
+    assert (result.job.source_width, result.job.source_duration_ms) == (320, 2000)

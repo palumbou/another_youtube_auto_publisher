@@ -5,7 +5,8 @@
               one Step Functions execution (the Fargate worker runs the revision)
   reprocess — from the console: start an execution for a REPROCESS_REQUESTED job
   publish   — EventBridge Scheduler: run due schedules through the configured adapter
-  console   — Lambda Function URL / API Gateway request for the review console
+  console   — API Gateway (JWT-authorized) request for the review console
+  fail      — state machine catch: mark the job FAILED when the worker task died
 
 The former "intake" created a job for any video object and read a sidecar naming a
 youtube_id to publish Shorts for a video already on the channel; both are retired.
@@ -25,7 +26,7 @@ from autopublisher.console import (
     request_from_lambda,
     response_to_lambda,
 )
-from autopublisher.domain import FULL, Job
+from autopublisher.domain import FAILED, FULL, AuditEvent, Job
 from autopublisher.ingest import CREATED, Ingestor, ReadyEvent
 from autopublisher.jobstore import DynamoJobStore
 from autopublisher.objectstore import S3ObjectStore
@@ -71,14 +72,36 @@ def start_execution(job: Job, scope: str, reason: str = "") -> None:
 def ingest(event, settings: Settings | None = None) -> dict:
     settings = settings or Settings.from_env()
     store, jobs = _stores()
-    ingestor = Ingestor(settings, store, jobs, workdir=Path("/tmp"))
-    results = []
-    for ready in ready_events_from_records(event):
-        result = ingestor.handle_ready(ready)
-        if result.status == CREATED and result.job:
-            start_execution(result.job, FULL)
-        results.append(result.as_dict())
-    return {"results": results}
+    ingestor = Ingestor(settings, store, jobs, workdir=Path("/tmp"),
+                        probe_media=os.environ.get("INGEST_PROBE_MEDIA", "0") == "1")
+    results, failures = [], []
+    records = event.get("Records") or [event]
+    for record in records:
+        try:
+            for ready in ready_events_from_records({"Records": [record]} if "body" in record else record):
+                result = ingestor.handle_ready(ready)
+                if result.status == CREATED and result.job:
+                    start_execution(result.job, FULL)
+                results.append(result.as_dict())
+        except Exception as exc:  # noqa: BLE001 - report the record to SQS, let the rest of the batch succeed
+            failures.append({"itemIdentifier": record.get("messageId", "")})
+            results.append({"status": "ERROR", "message": f"{type(exc).__name__}: {exc}"[:300]})
+    return {"results": results, "batchItemFailures": failures}
+
+
+def fail(event, settings: Settings | None = None) -> dict:
+    """Called by the state machine when the worker task itself failed."""
+    _, jobs = _stores()
+    job = jobs.get_job(event["project_key"], event["job_id"])
+    if job is None:
+        return {"error": "job not found"}
+    if job.can_transition(FAILED):
+        old = job.transition(FAILED)
+        job.error = {"code": "WORKER_FAILED", "message": json.dumps(event.get("error", ""))[:1000]}
+        jobs.update_job(job, expected_version=job.version)
+        jobs.append_audit(AuditEvent(project_key=job.project_key, job_id=job.job_id, action="STATE", actor="system:statemachine",
+                                     old_state=old, new_state=FAILED, revision=job.current_revision, reason="WORKER_FAILED"))
+    return {"job": job.pk, "state": job.state}
 
 
 def reprocess(event, settings: Settings | None = None) -> dict:
@@ -120,4 +143,4 @@ def handler(event, context):
             action = "console"
         elif "Records" in event or "detail" in event:
             action = "ingest"
-    return {"ingest": ingest, "reprocess": reprocess, "publish": publish, "console": console}[action](event)
+    return {"ingest": ingest, "reprocess": reprocess, "publish": publish, "console": console, "fail": fail}[action](event)

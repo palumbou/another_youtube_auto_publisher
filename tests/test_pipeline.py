@@ -22,3 +22,19 @@ def test_bare_eventbridge_event():
 
 def test_unknown_shape_yields_nothing():
     assert ready_events_from_records({"action": "finalize"}) == []
+
+
+def test_sqs_partial_batch_failure_reporting(monkeypatch):
+    from autopublisher import pipeline
+
+    class Boom:
+        def handle_ready(self, ready):
+            raise RuntimeError("store down")
+
+    monkeypatch.setattr(pipeline, "_stores", lambda: (None, None))
+    monkeypatch.setattr(pipeline, "Ingestor", lambda *a, **k: Boom())
+    monkeypatch.setenv("BUCKET", "b")
+    event = {"Records": [{"messageId": "m1", "body": '{"detail": {"bucket": {"name": "b"}, "object": {"key": "incoming/p/j/READY"}}}'}]}
+    out = pipeline.ingest(event, settings=__import__("tests.helpers", fromlist=["settings"]).settings())
+    assert out["batchItemFailures"] == [{"itemIdentifier": "m1"}]
+    assert out["results"][0]["status"] == "ERROR"

@@ -87,12 +87,23 @@ class IngestResult:
                 "errors": [e.as_dict() for e in self.errors]}
 
 
+@dataclass(frozen=True)
+class _DeclaredMedia:
+    duration_ms: int
+    width: int
+    height: int
+
+
 class Ingestor:
-    def __init__(self, settings: Settings, store: ObjectStore, jobs: JobStore, workdir: Path | None = None):
+    def __init__(self, settings: Settings, store: ObjectStore, jobs: JobStore, workdir: Path | None = None,
+                 probe_media: bool = True):
         self.settings = settings
         self.store = store
         self.jobs = jobs
         self.workdir = workdir
+        # Without ffprobe (Lambda) the declared dimensions are recorded and the worker
+        # re-validates the media in VALIDATING before anything else happens.
+        self.probe_media = probe_media
 
     # -- helpers -------------------------------------------------------------------
 
@@ -191,17 +202,22 @@ class Ingestor:
                 contract.SOURCE_HASH_MISMATCH, "declared sha256 does not match the uploaded source",
                 "/source/sha256")])
 
-        try:
-            info = self._probe(source)
-        except MediaError as exc:
-            return self._reject(project_key, job_id, [ContractError(contract.INVALID_MEDIA, str(exc), "/source")])
+        if self.probe_media:
+            try:
+                info = self._probe(source)
+            except MediaError as exc:
+                return self._reject(project_key, job_id, [ContractError(contract.INVALID_MEDIA, str(exc), "/source")])
+            if manifest is not None:
+                errors = self._media_consistency(manifest, info)
+                if errors:
+                    return self._reject(project_key, job_id, errors)
+        elif manifest is not None:
+            info = _DeclaredMedia(manifest["source"]["duration_ms"], manifest["source"]["width"], manifest["source"]["height"])
+        else:
+            info = _DeclaredMedia(0, 0, 0)
         if info.duration_ms > self.settings.max_source_duration_ms:
             return self._reject(project_key, job_id, [ContractError(
                 contract.INVALID_MEDIA, "source exceeds the configured duration limit", "/source")])
-        if manifest is not None:
-            errors = self._media_consistency(manifest, info)
-            if errors:
-                return self._reject(project_key, job_id, errors)
 
         job = Job(
             project_key=project_key, job_id=job_id, environment=self.settings.environment,
