@@ -1,0 +1,8 @@
+Local console: http://127.0.0.1:8765/  user: owner  password: <redacted>
+(the password is generated per run and never stored)
+127.0.0.1 GET /healthz -> 200
+127.0.0.1 GET / -> 303
+127.0.0.1 GET /login -> 200
+127.0.0.1 POST /login -> 303
+127.0.0.1 GET / -> 200
+127.0.0.1 POST /login -> 401

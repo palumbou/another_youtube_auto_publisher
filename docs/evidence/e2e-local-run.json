@@ -1,0 +1,166 @@
+{
+  "job_id": "e2e-20260920133856",
+  "steps": [
+    {
+      "ingest": [
+        {
+          "status": "CREATED",
+          "code": "",
+          "message": "job created",
+          "job_id": "e2e-20260920133856",
+          "errors": []
+        }
+      ],
+      "duplicate_ingest": [
+        {
+          "status": "DUPLICATE",
+          "code": "DUPLICATE_JOB",
+          "message": "event already ingested",
+          "job_id": "e2e-20260920133856",
+          "errors": []
+        }
+      ]
+    },
+    {
+      "reject": [
+        {
+          "job": "quiz-al-volo#e2e-20260920133856",
+          "revision": 2,
+          "state": "AWAITING_REVIEW",
+          "shorts": 1
+        }
+      ]
+    },
+    {
+      "publish": [
+        {
+          "schedule_id": "651caf927d2abeed574f8b4a",
+          "status": "UPLOADED",
+          "video_id": "fake-9a2ac76b",
+          "message": "",
+          "details": {
+            "privacyStatus": "private",
+            "publishAt": "",
+            "title": "Sai rispondere a questa domanda di geografia?",
+            "processingStatus": "succeeded"
+          }
+        },
+        {
+          "schedule_id": "f4b26f3a983c6f4a35642786",
+          "status": "UPLOADED",
+          "video_id": "fake-aee42cae",
+          "message": "",
+          "details": {
+            "privacyStatus": "private",
+            "publishAt": "",
+            "title": "Quanto conosci la geografia italiana?",
+            "processingStatus": "succeeded"
+          }
+        }
+      ]
+    }
+  ],
+  "final_state": "UPLOADED_PRIVATE",
+  "publications": [
+    {
+      "publication_id": "quiz-al-volo#e2e-20260920133856#2#master",
+      "project_key": "quiz-al-volo",
+      "job_id": "e2e-20260920133856",
+      "revision": 2,
+      "asset_id": "master",
+      "youtube_video_id": "fake-aee42cae",
+      "privacy_status": "private",
+      "uploaded_bytes": 21362084,
+      "total_bytes": 21362084,
+      "processing_status": "succeeded",
+      "verified_metadata": {
+        "privacyStatus": "private",
+        "processingStatus": "succeeded",
+        "publishAt": "",
+        "title": "Quanto conosci la geografia italiana?"
+      },
+      "publish_at_utc": "2027-09-20T13:39:37Z",
+      "mode": "fake",
+      "created_at": "2026-09-20T13:39:37Z",
+      "updated_at": "2026-09-20T13:39:38Z",
+      "version": 3
+    },
+    {
+      "publication_id": "quiz-al-volo#e2e-20260920133856#2#short-01",
+      "project_key": "quiz-al-volo",
+      "job_id": "e2e-20260920133856",
+      "revision": 2,
+      "asset_id": "short-01",
+      "youtube_video_id": "fake-9a2ac76b",
+      "privacy_status": "private",
+      "uploaded_bytes": 28391929,
+      "total_bytes": 28391929,
+      "processing_status": "succeeded",
+      "verified_metadata": {
+        "privacyStatus": "private",
+        "processingStatus": "succeeded",
+        "publishAt": "",
+        "title": "Sai rispondere a questa domanda di geografia?"
+      },
+      "publish_at_utc": "2027-09-20T13:39:37Z",
+      "mode": "fake",
+      "created_at": "2026-09-20T13:39:37Z",
+      "updated_at": "2026-09-20T13:39:37Z",
+      "version": 3
+    }
+  ],
+  "fake_requests": [
+    "upload",
+    "status",
+    "upload",
+    "thumbnail",
+    "status"
+  ],
+  "audit_actions": [
+    "INGEST_ACCEPTED",
+    "STATE",
+    "STATE",
+    "STATE",
+    "STATE",
+    "REJECTED",
+    "STATE",
+    "STATE",
+    "STATE",
+    "METADATA_EDITED",
+    "METADATA_EDITED",
+    "BATCH_APPROVED",
+    "SCHEDULED",
+    "SCHEDULED",
+    "UPLOAD_STARTED",
+    "UPLOADED_PRIVATE",
+    "VERIFYING",
+    "UPLOADED_PRIVATE",
+    "FINAL"
+  ],
+  "revisions": [
+    {
+      "number": 1,
+      "scope": "FULL",
+      "shorts": [
+        [
+          "short-01",
+          "41c97fe392ed",
+          true
+        ]
+      ],
+      "warnings": []
+    },
+    {
+      "number": 2,
+      "scope": "METADATA_ONLY",
+      "shorts": [
+        [
+          "short-01",
+          "41c97fe392ed",
+          true
+        ]
+      ],
+      "warnings": []
+    }
+  ]
+}
