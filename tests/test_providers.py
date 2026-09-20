@@ -86,3 +86,12 @@ def test_grounding_needs_a_corpus():
     analysis = ManifestAnalysisProvider().analyze(AnalysisInput(manifest, None))
     with pytest.raises(GroundingError):
         ground(analysis, None, None)
+
+
+def test_description_never_spoils_answers_or_explanations():
+    manifest = helpers.tiny_manifest()
+    analysis = validate_analysis(ManifestAnalysisProvider().analyze(AnalysisInput(manifest, None)))
+    description = analysis["description"]
+    assert "Qual è il fiume più lungo d'Italia?" in description
+    assert "Il Po" not in description and "Monviso" not in description
+    assert ground(analysis, manifest, None) == []

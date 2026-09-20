@@ -46,7 +46,7 @@ No pull request was opened and `master` was not touched: merging is the owner's 
 | Check | Status | Command / evidence |
 |---|---|---|
 | Lint | PASS | `.venv/bin/ruff check .` → `All checks passed!` |
-| Unit + integration suite | PASS | `.venv/bin/pytest -q` → `322 passed in 144.96s (0:02:24)` (`docs/evidence/pytest-final.txt`) |
+| Unit + integration suite | PASS | `.venv/bin/pytest -q` → `326 passed in 227.80s (0:03:47)` (`docs/evidence/pytest-final.txt`) |
 | Contract fixtures (schema Draft 2020-12, invalid fixtures with stable codes) | PASS | `tests/test_contract.py` (15 tests) |
 | Duplicate / out-of-order READY events → one job | PASS | `tests/test_ingest.py::test_duplicate_and_out_of_order_events_create_one_job` |
 | Pre-cutover READY ignored; missing READY ignored | PASS | `test_pre_cutover_ready_is_ignored`, `test_missing_ready_is_ignored` |
@@ -56,6 +56,10 @@ No pull request was opened and `master` was not touched: merging is the owner's 
 | Provider failure, low-confidence transcript kept and flagged, hallucinated claim rejected, invalid structured output rejected | PASS | `tests/test_providers.py`, `tests/test_processing.py` |
 | Manifest precedence and Short completeness (question→answer→explanation) | PASS | `tests/test_shorts.py`, contract fixture `invalid-short-cuts-explanation.json` |
 | ffmpeg output 1080×1920, h264/aac, duration, no black bars, true peak | PASS | `tests/test_render.py::test_render_short_from_fixture` (real ffmpeg run) |
+| Crop honours the manifest `crop_region` pixel-exactly (no zoom, no offset): synthetic 1920×1080 master with a marker at x=700 lands at x=280 in the Short (1:1 central crop) and at x≈85–121 for a narrow region scaled to fit; measured on decoded rows | PASS | `tests/test_render.py::test_marker_lands_where_the_layout_says` (regression for the defect found in the cross-project test) |
+| Burned captions never cover text the master already shows; decision per caption logged in the render report | PASS | `tests/test_render.py::test_captions_never_cover_master_text_and_decisions_are_logged`; real job: `docs/evidence/qav-pilota-001-rev1-tennis-render-report.json` |
+| Descriptions never spoil answers or explanations | PASS | `tests/test_providers.py::test_description_never_spoils_answers_or_explanations`, `tests/test_processing.py` |
+| Re-render of the real Quiz al Volo job `qav-pilota-001` (296.6 s master, 3 Shorts) with the fixed renderer, in a private bucket/state root | PASS | frames at 20 s of source time before and after: `docs/evidence/qav-pilota-001-short-tennis-t20s-before-fix.png`, `docs/evidence/qav-pilota-001-short-tennis-t20s-after-fix.png`; status `docs/evidence/qav-pilota-001-rerender-status.json` |
 | Similarity / volume gate | PASS | `tests/test_shorts.py` |
 | Scoped reprocess creates immutable next revision | PASS | `tests/test_processing.py::test_scoped_reprocess_creates_immutable_next_revision` |
 | Approval required before scheduling/upload; batch approval leaves unselected shorts pending | PASS | `tests/test_review.py`, `tests/test_publishing.py::test_unapproved_asset_is_refused_even_if_scheduled` |
@@ -69,7 +73,7 @@ No pull request was opened and `master` was not touched: merging is the owner's 
 | OpenTofu plan / apply | BLOCKED | no AWS credentials on this host and no deployment authorization or recorded budget |
 | Worker container image build | NOT RUN | no Docker daemon in this session (podman present, build not attempted); the Dockerfile is the only untested artefact |
 | Real YouTube private upload | NOT RUN | requires the owner's OAuth bootstrap and an authorized environment |
-| Cross-project acceptance with a real Quiz al Volo master | NOT RUN here | the coordinator runs it against `/home/fedora/Desktop/claude/handoff/s3-local` with the command in the handoff |
+| Cross-project acceptance with a real Quiz al Volo master | PASS (coordinator) | ingest CREATED, duplicate DUPLICATE_JOB, revision 1 AWAITING_REVIEW with 3 Shorts on `/home/fedora/Desktop/claude/handoff/s3-local`; the Short crop defect it revealed is fixed and covered above |
 | WAF/auth configuration on a live stack, DLQ redrive, backup restore | NOT RUN | need a deployment |
 
 ## Build sizes and checksums
@@ -96,7 +100,7 @@ See `THIRD_PARTY_NOTICES.md`. Runtime: jsonschema (MIT). Optional: boto3 (Apache
 
 ## Performance evidence
 
-Local e2e: 42 s 1080p master → ingest + FULL revision (transcript mock, analysis mock, one 1080×1920 Short with captions and loudness normalisation, thumbnail, verification) + METADATA_ONLY revision + two fake uploads in 41.7 s wall clock on a workstation with libopenh264. Test suite: 322 tests in 145 s, dominated by real ffmpeg renders.
+Real job: 296.6 s 1080p master → ingest + FULL revision with three 1080×1920 Shorts and three thumbnails in 4 min 10 s wall clock (libopenh264, single workstation). Local e2e: 42 s 1080p master → ingest + FULL revision (transcript mock, analysis mock, one 1080×1920 Short with captions and loudness normalisation, thumbnail, verification) + METADATA_ONLY revision + two fake uploads in 41.7 s wall clock on a workstation with libopenh264. Test suite: 326 tests in 228 s, dominated by real ffmpeg renders.
 
 ## Open blockers
 

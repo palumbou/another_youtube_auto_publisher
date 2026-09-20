@@ -169,18 +169,13 @@ class ManifestAnalysisProvider(ContentAnalysisProvider):
             raise ProviderError("the mock provider needs a manifest")
         content = m["content"]
         questions = [s for s in m["segments"] if s["type"] == "QUESTION" and s.get("text")]
-        answers = {s.get("question_id"): s.get("text", "") for s in m["segments"] if s["type"] == "ANSWER"}
-        explanations = {s.get("question_id"): s.get("text", "") for s in m["segments"] if s["type"] == "EXPLANATION"}
         first_q = questions[0]["text"] if questions else content.get("title_hint", content["category"])
         title_hint = content.get("title_hint") or first_q
         titles = [title_hint[:100], first_q[:100], f"{content['category'].capitalize()}: {first_q}"[:100]]
+        # Never spoil the quiz: the description lists the questions and the topics,
+        # never an answer or an explanation (those stay inside the video).
         desc_parts = [content["summary"]]
-        for q in questions:
-            qid = q.get("question_id")
-            if answers.get(qid):
-                desc_parts.append(f"{q['text']} {answers[qid]}.")
-            if explanations.get(qid):
-                desc_parts.append(explanations[qid])
+        desc_parts += [f"{i + 1}. {q['text']}" for i, q in enumerate(questions)]
         for link in content.get("source_links", []):
             desc_parts.append(f"{link['title']}: {link['url']}")
         chapters = [{"start_ms": q["start_ms"], "title": q["text"][:100]} for q in questions]
