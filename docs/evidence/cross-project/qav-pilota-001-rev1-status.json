@@ -1,0 +1,109 @@
+{
+  "project_key": "quiz-al-volo",
+  "job_id": "qav-pilota-001",
+  "state": "AWAITING_REVIEW",
+  "current_revision": 1,
+  "master_review_status": "PENDING",
+  "shorts": [
+    {
+      "candidate_id": "short-qav-musica-italiana-0004",
+      "review_status": "PENDING"
+    },
+    {
+      "candidate_id": "short-qav-tennis-0485",
+      "review_status": "PENDING"
+    },
+    {
+      "candidate_id": "short-qav-ciclismo-0076",
+      "review_status": "PENDING"
+    }
+  ],
+  "updated_at": "2026-09-20T13:54:32Z",
+  "audit": [
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "INGEST_ACCEPTED",
+      "actor": "system:ingest",
+      "old_state": "",
+      "new_state": "INGESTED",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "cutover": "accepted: READY 2026-09-20T13:32:22.507811+00:00 >= cutover 2026-09-20T00:00:00+00:00",
+        "idempotency_key": "9776d956ccac497791156f54451598b6f7173a1dd3a56b48ee473ff4df22d03c",
+        "ready_version_id": "fs-e3b0c44298fc1c149afbf4c8",
+        "source_version_id": "fs-69dc69ed3bd5abc9b717718b"
+      },
+      "timestamp": "2026-09-20T13:51:44Z",
+      "sequence": 1
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "INGESTED",
+      "new_state": "VALIDATING",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:44Z",
+      "sequence": 2
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "VALIDATING",
+      "new_state": "ANALYZING",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:45Z",
+      "sequence": 3
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "ANALYZING",
+      "new_state": "GENERATING_ASSETS",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:45Z",
+      "sequence": 4
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "GENERATING_ASSETS",
+      "new_state": "AWAITING_REVIEW",
+      "revision": 1,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1,
+        "shorts": 3,
+        "warnings": 0
+      },
+      "timestamp": "2026-09-20T13:54:32Z",
+      "sequence": 5
+    }
+  ]
+}

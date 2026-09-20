@@ -1,0 +1,333 @@
+$ .venv/bin/python -m autopublisher.local ingest --bucket-root handoff/s3-local --state-root handoff/publisher-state
+[
+  {
+    "status": "CREATED",
+    "code": "",
+    "message": "job created",
+    "job_id": "qav-pilota-001",
+    "errors": []
+  }
+]
+$ .venv/bin/python -m autopublisher.local ingest --bucket-root handoff/s3-local --state-root handoff/publisher-state
+[
+  {
+    "status": "DUPLICATE",
+    "code": "DUPLICATE_JOB",
+    "message": "event already ingested",
+    "job_id": "qav-pilota-001",
+    "errors": []
+  }
+]
+$ .venv/bin/python -m autopublisher.local status --state-root handoff/publisher-state --job qav-pilota-001
+{
+  "project_key": "quiz-al-volo",
+  "job_id": "qav-pilota-001",
+  "state": "AWAITING_REVIEW",
+  "current_revision": 1,
+  "master_review_status": "PENDING",
+  "shorts": [
+    {
+      "candidate_id": "short-qav-musica-italiana-0004",
+      "review_status": "PENDING"
+    },
+    {
+      "candidate_id": "short-qav-tennis-0485",
+      "review_status": "PENDING"
+    },
+    {
+      "candidate_id": "short-qav-ciclismo-0076",
+      "review_status": "PENDING"
+    }
+  ],
+  "updated_at": "2026-09-20T13:54:32Z",
+  "audit": [
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "INGEST_ACCEPTED",
+      "actor": "system:ingest",
+      "old_state": "",
+      "new_state": "INGESTED",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "cutover": "accepted: READY 2026-09-20T13:32:22.507811+00:00 >= cutover 2026-09-20T00:00:00+00:00",
+        "idempotency_key": "9776d956ccac497791156f54451598b6f7173a1dd3a56b48ee473ff4df22d03c",
+        "ready_version_id": "fs-e3b0c44298fc1c149afbf4c8",
+        "source_version_id": "fs-69dc69ed3bd5abc9b717718b"
+      },
+      "timestamp": "2026-09-20T13:51:44Z",
+      "sequence": 1
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "INGESTED",
+      "new_state": "VALIDATING",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:44Z",
+      "sequence": 2
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "VALIDATING",
+      "new_state": "ANALYZING",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:45Z",
+      "sequence": 3
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "ANALYZING",
+      "new_state": "GENERATING_ASSETS",
+      "revision": 0,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1
+      },
+      "timestamp": "2026-09-20T13:51:45Z",
+      "sequence": 4
+    },
+    {
+      "project_key": "quiz-al-volo",
+      "job_id": "qav-pilota-001",
+      "action": "STATE",
+      "actor": "system:processor",
+      "old_state": "GENERATING_ASSETS",
+      "new_state": "AWAITING_REVIEW",
+      "revision": 1,
+      "reason": "",
+      "source_ip": "",
+      "details": {
+        "revision": 1,
+        "shorts": 3,
+        "warnings": 0
+      },
+      "timestamp": "2026-09-20T13:54:32Z",
+      "sequence": 5
+    }
+  ]
+}
+$ reject SHORTS_ONLY 2026-09-20T14:11:54Z
+[
+  {
+    "job": "quiz-al-volo#qav-pilota-001",
+    "revision": 2,
+    "state": "AWAITING_REVIEW",
+    "shorts": 3
+  }
+]
+$ .venv/bin/python -m autopublisher.local confirm --state-root handoff/publisher-state --job qav-pilota-001 --asset master
+{
+  "category": "Education",
+  "chapters": [
+    {
+      "start_ms": 7900,
+      "title": "Quale Grande Slam si disputa a Parigi?"
+    },
+    {
+      "start_ms": 34000,
+      "title": "A quale regione italiana è tradizionalmente associato/a bistecca alla fiorentina?"
+    },
+    {
+      "start_ms": 62300,
+      "title": "A quale festa è legata la figura della Befana?"
+    },
+    {
+      "start_ms": 93500,
+      "title": "Quante squadre compongono in totale la fase campionato 2026/27?"
+    },
+    {
+      "start_ms": 116300,
+      "title": "Quale canzone vinse il Festival nel 2018?"
+    },
+    {
+      "start_ms": 142300,
+      "title": "In quale anno il Festival arrivò per la prima volta in televisione?"
+    },
+    {
+      "start_ms": 165500,
+      "title": "Una squadra segna 4 mete, 3 trasformazioni riuscite e 1 calcio di punizione. Quanti punti ottiene?"
+    },
+    {
+      "start_ms": 198600,
+      "title": "Nel set decisivo a 15 con due punti di margine, il punteggio è 16-18. Quale affermazione è corretta?"
+    },
+    {
+      "start_ms": 231900,
+      "title": "Chi vinse il Giro d'Italia del 1930?"
+    },
+    {
+      "start_ms": 260800,
+      "title": "Quale di questi film ottenne il Leone d'oro nel 1994?"
+    }
+  ],
+  "contains_synthetic_media": false,
+  "default_language": "it",
+  "description": "Sfida mista in dieci domande di cultura generale italiana con difficoltà crescente: tennis, cucina, tradizioni, musica, rugby, pallavolo, calcio europeo, ciclismo e cinema. Ogni risposta è seguita da una spiegazione con fonte. Quale Grande Slam si disputa a Parigi? Roland Garros. Il Roland Garros si gioca a Parigi, allo Stade Roland-Garros, ed è l'unico torneo del Grande Slam disputato sulla terra battuta. A quale regione italiana è tradizionalmente associato/a bistecca alla fiorentina? Toscana. La bistecca alla fiorentina è un taglio di lombata con l'osso, tradizionalmente di razza Chianina, cotto alla brace e servito al sangue: è uno dei simboli della cucina toscana. A quale festa è legata la figura della Befana? L'Epifania. La Befana è legata all'Epifania, il 6 gennaio: secondo la tradizione porta dolci ai bambini nella notte tra il 5 e il 6, e il suo nome è una deformazione popolare della parola Epifania. Quante squadre compongono in totale la fase campionato 2026/27? 36. Le 29 qualificate dirette e le 7 dai preliminari formano un totale di 36 squadre. Quale canzone vinse il Festival nel 2018? Non mi avete fatto niente. Nel 2018 vinse “Non mi avete fatto niente”, interpretata da Ermal Meta e Fabrizio Moro. In quale anno il Festival arrivò per la prima volta in televisione? 1955. Rai Teche indica il 27 gennaio 1955 come avvio della prima edizione televisiva. Una squadra segna 4 mete, 3 trasformazioni riuscite e 1 calcio di punizione. Quanti punti ottiene? 29 punti. Nel rugby union una meta vale 5 punti, la trasformazione 2 e il calcio di punizione 3: 4 mete fanno 20, le 3 trasformazioni 6 e il calcio 3, in totale 29 punti. Nel set decisivo a 15 con due punti di margine, il punteggio è 16-18. Quale affermazione è corretta? Il set è concluso. Risposta corretta: “Il set è concluso”. Nel quinto set una squadra ha almeno 15 punti e due punti di vantaggio. Chi vinse il Giro d'Italia del 1930? Luigi Marchisio. Luigi Marchisio vinse il Giro d'Italia del 1930 a soli 21 anni, in un'edizione senza squadre ufficiali, e resta uno dei vincitori più giovani nella storia della corsa rosa. Quale di questi film ottenne il Leone d'oro nel 1994? Before the Rain. Before the Rain ottenne il Leone d'oro nel 1994. Il premio fu condiviso con Vive L'Amour. International Tennis Federation — Rules of Tennis: https://www.itftennis.com/en/about-us/governance/rules-and-regulations/ Ministero dell'Agricoltura, della Sovranità alimentare e delle Foreste — Prodotti Agroalimentari Tradizionali: https://www.masaf.gov.it/flex/cm/pages/ServeBLOB.php/L/IT/IDPagina/398 Treccani — Natale: https://www.treccani.it/enciclopedia/natale/ 2026/27 Champions League: teams, dates, draws, format, final: https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/ Sanremo, i vincitori: https://www.teche.rai.it/2025/02/sanremo-i-vincitori-2/ Il 27 gennaio 1955 il Festival di Sanremo arriva in TV: https://www.teche.rai.it/2020/01/27-gennaio-1955-festival-sanremo-arriva-tv/ World Rugby — Laws of the Game: https://passport.world.rugby/laws-of-the-game/ FIVB — Official Volleyball Rules 2025–2028: https://www.fivb.com/document-category/official-volleyball-rules/ Giro d'Italia — Palmarès: https://www.giroditalia.it/en/palmares/ Golden Lion — elenco storico dei vincitori: https://en.wikipedia.org/wiki/Golden_Lion",
+  "hashtags": [
+    "#quiz",
+    "#quizalvolo"
+  ],
+  "made_for_kids": false,
+  "notify_subscribers": false,
+  "owner_confirmed_audience": true,
+  "owner_confirmed_synthetic": false,
+  "playlist": "Sfida mista",
+  "privacy": "private",
+  "tags": [
+    "cultura-generale",
+    "quiz cultura-generale",
+    "cultura generale",
+    "dieci domande dal facile al difficile"
+  ],
+  "title": "Dieci domande dal facile al difficile",
+  "title_candidates": [
+    "Dieci domande dal facile al difficile",
+    "Quale Grande Slam si disputa a Parigi?",
+    "Cultura-generale: Quale Grande Slam si disputa a Parigi?"
+  ]
+}
+$ .venv/bin/python -m autopublisher.local confirm --state-root handoff/publisher-state --job qav-pilota-001 --asset short-qav-tennis-0485
+"ok"
+$ .venv/bin/python -m autopublisher.local approve --state-root handoff/publisher-state --job qav-pilota-001 --master --short short-qav-tennis-0485
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 305, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 288, in main
+    out = stack.review.approve_selected(project, args.job, CLI_ACTOR, include_master=args.master, short_ids=args.short).state
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/review.py", line 185, in approve_selected
+    self._confirmations_ok(asset.metadata)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/review.py", line 125, in _confirmations_ok
+    raise ReviewError("confirm the made-for-kids decision before approving")
+autopublisher.review.ReviewError: confirm the made-for-kids decision before approving
+$ .venv/bin/python -m autopublisher.local schedule --state-root handoff/publisher-state --job qav-pilota-001 --asset master --at 2027-01-01T10:00
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 305, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 293, in main
+    out = stack.review.schedule(project, args.job, args.asset, args.at, CLI_ACTOR, notify_subscribers=args.notify).to_dict()
+          ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/review.py", line 243, in schedule
+    raise ReviewError(f"schedule needs an approved job, not {job.state}")
+autopublisher.review.ReviewError: schedule needs an approved job, not AWAITING_REVIEW
+$ .venv/bin/python -m autopublisher.local schedule --state-root handoff/publisher-state --job qav-pilota-001 --asset short-qav-tennis-0485 --at 2027-01-01T10:00
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 305, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/local.py", line 293, in main
+    out = stack.review.schedule(project, args.job, args.asset, args.at, CLI_ACTOR, notify_subscribers=args.notify).to_dict()
+          ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "another-youtube-auto-publisher_reconciled/autopublisher/review.py", line 243, in schedule
+    raise ReviewError(f"schedule needs an approved job, not {job.state}")
+autopublisher.review.ReviewError: schedule needs an approved job, not AWAITING_REVIEW
+$ .venv/bin/python -m autopublisher.local publish --bucket-root handoff/s3-local --state-root handoff/publisher-state --now 2027-01-01T10:00:00Z
+[]
+$ .venv/bin/python -m autopublisher.local publish --bucket-root handoff/s3-local --state-root handoff/publisher-state --now 2027-01-01T10:05:00Z
+[]
+$ .venv/bin/python -m autopublisher.local confirm --state-root handoff/publisher-state --job qav-pilota-001 --asset short-qav-tennis-0485
+{
+  "job_id": "qav-pilota-001",
+  "asset_id": "short-qav-tennis-0485",
+  "revision": 2,
+  "owner_confirmed_audience": true,
+  "owner_confirmed_synthetic": false
+}
+$ .venv/bin/python -m autopublisher.local approve --state-root handoff/publisher-state --job qav-pilota-001 --master --short short-qav-tennis-0485
+"APPROVED"
+$ .venv/bin/python -m autopublisher.local schedule --state-root handoff/publisher-state --job qav-pilota-001 --asset master --at 2027-01-01T10:00
+{
+  "schedule_id": "53073a66e7a7aa6ff7a771c1",
+  "project_key": "quiz-al-volo",
+  "job_id": "qav-pilota-001",
+  "revision": 2,
+  "asset_id": "master",
+  "publish_at_utc": "2027-01-01T09:00:00Z",
+  "owner_timezone": "Europe/Rome",
+  "privacy_after_publish": "private",
+  "notify_subscribers": false,
+  "status": "PENDING",
+  "attempts": 0,
+  "last_error": "",
+  "created_at": "2026-09-20T18:37:49Z",
+  "updated_at": "2026-09-20T18:37:49Z",
+  "version": 1
+}
+$ .venv/bin/python -m autopublisher.local schedule --state-root handoff/publisher-state --job qav-pilota-001 --asset short-qav-tennis-0485 --at 2027-01-01T10:00
+{
+  "schedule_id": "58b0332219ec96d86f37caae",
+  "project_key": "quiz-al-volo",
+  "job_id": "qav-pilota-001",
+  "revision": 2,
+  "asset_id": "short-qav-tennis-0485",
+  "publish_at_utc": "2027-01-01T09:00:00Z",
+  "owner_timezone": "Europe/Rome",
+  "privacy_after_publish": "private",
+  "notify_subscribers": false,
+  "status": "PENDING",
+  "attempts": 0,
+  "last_error": "",
+  "created_at": "2026-09-20T18:37:50Z",
+  "updated_at": "2026-09-20T18:37:50Z",
+  "version": 1
+}
+$ .venv/bin/python -m autopublisher.local publish --bucket-root handoff/s3-local --state-root handoff/publisher-state --now 2027-01-01T10:00:00Z
+[
+  {
+    "schedule_id": "53073a66e7a7aa6ff7a771c1",
+    "status": "UPLOADED",
+    "video_id": "fake-1fe0f299",
+    "message": "",
+    "details": {
+      "privacyStatus": "private",
+      "publishAt": "",
+      "title": "Dieci domande dal facile al difficile",
+      "processingStatus": "succeeded"
+    }
+  },
+  {
+    "schedule_id": "58b0332219ec96d86f37caae",
+    "status": "UPLOADED",
+    "video_id": "fake-2394c7af",
+    "message": "",
+    "details": {
+      "privacyStatus": "private",
+      "publishAt": "",
+      "title": "Quale Grande Slam si disputa a Parigi?",
+      "processingStatus": "succeeded"
+    }
+  }
+]
+$ .venv/bin/python -m autopublisher.local publish --bucket-root handoff/s3-local --state-root handoff/publisher-state --now 2027-01-01T10:05:00Z
+[]
