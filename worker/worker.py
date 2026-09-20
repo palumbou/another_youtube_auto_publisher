@@ -4,10 +4,12 @@ Modes (env MODE):
   probe  — extract signals from the source video: metadata, scene changes, loudness,
            speech detection (VAD), timestamped frame mosaics for visual analysis,
            audio track for optional transcription. Writes work/<job>/probe.json.
-  cut    — render each planned segment as a 9:16 Short (blurred background, full
-           original frame centered, audio untouched). Writes work/<job>/cut_result.json.
+  render — render the revision plan (work/<project>/<job>/rev-NNNN/plan.json) into
+           9:16 Shorts with burned captions and thumbnails through
+           autopublisher.processing.render_plan, verify them, upload them under
+           ready/… and write render_result.json next to the plan.
 
-Local development (no S3): worker.py <probe|cut> --local <video> --workdir <dir>
+Local development (no S3): worker.py <probe|render> --local <video> --workdir <dir>
 """
 
 from __future__ import annotations
@@ -133,26 +135,19 @@ def build_mosaics(video: Path, workdir: Path, duration: float) -> tuple[list[Pat
     return sorted(workdir.glob("mosaic_*.jpg")), interval
 
 
-def render_short(video: Path, start: float, end: float, out: Path) -> None:
-    """9:16 1080x1920: blurred zoomed copy as background, full original frame centered.
+def render(video: Path, plan: dict, workdir: Path, encoder: str | None = None) -> dict:
+    """Render the shorts and thumbnails of a revision plan; returns the assets and reports."""
+    from autopublisher.media import available_encoder, ffprobe
+    from autopublisher.processing import render_plan
+    from autopublisher.shorts import ShortPlan
 
-    Content is untouched (no editing): only the framing changes. Audio re-encoded to
-    AAC as-is. -ss before -i for fast seek, then accurate trim on the output.
-    """
-    filter_complex = (
-        "[0:v]split=2[bg][fg];"
-        "[bg]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,gblur=sigma=30[bgb];"
-        "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[fgs];"
-        "[bgb][fgs]overlay=(W-w)/2:(H-h)/2:format=auto[v]"
-    )
-    run(
-        ["ffmpeg", "-hide_banner", "-nostats", "-y",
-         "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", video,
-         "-filter_complex", filter_complex, "-map", "[v]", "-map", "0:a?",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out],
-    )
+    info = ffprobe(video)
+    plans = [ShortPlan.from_dict(p) for p in plan["shorts"]]
+    output = render_plan(video, info, plans, plan.get("thumbnails", []), workdir / "out",
+                         encoder or available_encoder())
+    (workdir / "commands.json").write_text(output.log.to_json())
+    return {"shorts": [a.__dict__ for a in output.shorts], "thumbnails": [a.__dict__ for a in output.thumbnails],
+            "reports": output.reports}
 
 
 def downsample(values: list[float], max_points: int = 300) -> list[float]:
@@ -220,16 +215,19 @@ def s3_main(mode: str) -> None:
                                f"{prefix}/{result['audio_file']}")
             s3.put_object(Bucket=bucket, Key=f"{prefix}/probe.json",
                           Body=json.dumps(result).encode(), ContentType="application/json")
-        elif mode == "cut":
-            plan_key = os.environ.get("PLAN_KEY", f"{prefix}/plan.json")
+        elif mode == "render":
+            plan_key = os.environ["PLAN_KEY"]
+            plan_prefix = plan_key.rsplit("/", 1)[0] + "/"
+            ready_prefix = os.environ["READY_PREFIX"]
             plan = json.loads(s3.get_object(Bucket=bucket, Key=plan_key)["Body"].read())
-            result = cut(video, plan, workdir)
-            for item in result["shorts"]:
-                dest = f"ready/{job_id}/{item['file']}"
-                s3.upload_file(str(workdir / item["file"]), bucket, dest,
-                               ExtraArgs={"ContentType": "video/mp4"})
-                item["s3_key"] = dest
-            s3.put_object(Bucket=bucket, Key=f"{prefix}/cut_result.json",
+            result = render(video, plan, workdir, os.environ.get("VIDEO_ENCODER") or None)
+            for item in result["shorts"] + result["thumbnails"]:
+                content_type = "video/mp4" if item["type"] == "SHORT" else "image/jpeg"
+                dest = ready_prefix + item["key"]
+                s3.upload_file(str(workdir / "out" / item["key"]), bucket, dest, ExtraArgs={"ContentType": content_type})
+                item["key"] = dest
+            s3.upload_file(str(workdir / "commands.json"), bucket, plan_prefix + "commands.json")
+            s3.put_object(Bucket=bucket, Key=plan_prefix + "render_result.json",
                           Body=json.dumps(result).encode(), ContentType="application/json")
         else:
             raise SystemExit(f"unknown mode: {mode}")
@@ -243,10 +241,10 @@ def local_main(mode: str, video: Path, workdir: Path) -> None:
         (workdir / "probe.json").write_text(json.dumps(result, indent=2))
         print(json.dumps({k: v for k, v in result.items()
                           if k not in ("scene_changes", "loudness_db_per_s")}, indent=2))
-    elif mode == "cut":
+    elif mode == "render":
         plan = json.loads((workdir / "plan.json").read_text())
-        result = cut(video, plan, workdir)
-        print(json.dumps(result, indent=2))
+        result = render(video, plan, workdir)
+        print(json.dumps({k: v for k, v in result.items() if k != "reports"}, indent=2, default=str))
     else:
         raise SystemExit(f"unknown mode: {mode}")
 
