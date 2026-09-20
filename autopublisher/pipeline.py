@@ -1,37 +1,36 @@
-"""Glue Lambda for the Step Functions pipeline. Dispatches on event["action"]:
+"""AWS Lambda entry points. Dispatch on event["action"] or on the event shape:
 
-  ingest         — SQS batch of S3/EventBridge object-created events: every READY
-                   marker goes through the contract-driven ingestor (autopublisher.ingest)
-  probe_summary  — read work/<job>/probe.json and return what the state machine
-                   needs to decide whether to run Transcribe
-  finalize       — merge cut_result.json into the job and set PENDING_REVIEW
-  fail           — record a pipeline error on the job
+  ingest    — SQS batch of S3/EventBridge object-created events; every READY marker
+              goes through the contract-driven ingestor and each CREATED job starts
+              one Step Functions execution (the Fargate worker runs the revision)
+  reprocess — from the console: start an execution for a REPROCESS_REQUESTED job
+  publish   — EventBridge Scheduler: run due schedules through the configured adapter
+  console   — Lambda Function URL / API Gateway request for the review console
 
-The former "intake" action created a job for any video object and read an optional
-sidecar with a `youtube_id` to publish Shorts for a video already on the channel.
-Both are retired: only post-cutover READY jobs are eligible, and the channel is
-never crawled or backfilled.
+The former "intake" created a job for any video object and read a sidecar naming a
+youtube_id to publish Shorts for a video already on the channel; both are retired.
+Only post-cutover READY jobs are eligible and the channel is never crawled.
 """
 
 from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
 from pathlib import Path
 
-import boto3
-
-from autopublisher import storage
 from autopublisher.config import Settings
-from autopublisher.ingest import Ingestor, ReadyEvent
+from autopublisher.console import (
+    Console,
+    GatewayJwtAuthenticator,
+    request_from_lambda,
+    response_to_lambda,
+)
+from autopublisher.domain import FULL, Job
+from autopublisher.ingest import CREATED, Ingestor, ReadyEvent
 from autopublisher.jobstore import DynamoJobStore
-from autopublisher.models import STATUS_ERROR, STATUS_PENDING_REVIEW
 from autopublisher.objectstore import S3ObjectStore
-
-
-def now_iso() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+from autopublisher.publishing import FakeYouTubeAdapter, Publisher, RealYouTubeAdapter
+from autopublisher.review import ReviewService
 
 
 def ready_events_from_records(event: dict) -> list[ReadyEvent]:
@@ -55,67 +54,70 @@ def ready_events_from_records(event: dict) -> list[ReadyEvent]:
     return out
 
 
-def build_ingestor(settings: Settings | None = None) -> Ingestor:
-    settings = settings or Settings.from_env()
-    return Ingestor(settings, S3ObjectStore(os.environ["BUCKET"]),
-                    DynamoJobStore(os.environ["TABLE_PREFIX"]), workdir=Path("/tmp"))
+def _stores():
+    return S3ObjectStore(os.environ["BUCKET"]), DynamoJobStore(os.environ["TABLE_PREFIX"])
 
 
-def ingest(event) -> dict:
-    ingestor = build_ingestor()
-    results = [ingestor.handle_ready(e) for e in ready_events_from_records(event)]
-    return {"results": [r.as_dict() for r in results]}
+def start_execution(job: Job, scope: str, reason: str = "") -> None:
+    import boto3
 
-
-def probe_summary(event) -> dict:
-    s3 = boto3.client("s3")
-    bucket = os.environ["BUCKET"]
-    job_id = event["job_id"]
-    prefix = f"work/{job_id}"
-    probe = json.loads(s3.get_object(Bucket=bucket, Key=f"{prefix}/probe.json")["Body"].read())
-    language = event.get("language_override") or ""
-    return {
-        "job_id": job_id,
-        "has_speech": bool(probe.get("has_speech")) and bool(probe.get("audio_file")),
-        "audio_uri": f"s3://{bucket}/{prefix}/{probe['audio_file']}" if probe.get("audio_file") else "",
-        "transcript_key": f"{prefix}/transcript.json",
-        "language": language,
-        "identify_language": not language,
-    }
-
-
-def finalize(event) -> dict:
-    s3 = boto3.client("s3")
-    bucket = os.environ["BUCKET"]
-    job_id = event["job_id"]
-    job = storage.load_job(job_id)
-    if job is None:
-        raise RuntimeError(f"job {job_id} not found")
-
-    result = json.loads(
-        s3.get_object(Bucket=bucket, Key=f"work/{job_id}/cut_result.json")["Body"].read()
+    boto3.client("stepfunctions").start_execution(
+        stateMachineArn=os.environ["STATE_MACHINE_ARN"],
+        name=f"{job.job_id}-r{job.current_revision + 1}"[:80],
+        input=json.dumps({"project_key": job.project_key, "job_id": job.job_id, "scope": scope, "reason": reason[:500]}),
     )
-    keys = {item["short_id"]: item["s3_key"] for item in result["shorts"]}
-    for short in job.shorts:
-        short.s3_key = keys.get(short.short_id, short.s3_key)
-
-    job.error = ""
-    job.status = STATUS_PENDING_REVIEW
-    storage.save_job(job)
-    return {"job_id": job_id, "status": job.status, "num_shorts": len(job.shorts)}
 
 
-def fail(event) -> dict:
-    job_id = event.get("job_id")
-    job = storage.load_job(job_id) if job_id else None
-    if job:
-        job.status = STATUS_ERROR
-        job.error = json.dumps(event.get("error", ""))[:2000]
-        storage.save_job(job)
-    return {"job_id": job_id, "status": STATUS_ERROR}
+def ingest(event, settings: Settings | None = None) -> dict:
+    settings = settings or Settings.from_env()
+    store, jobs = _stores()
+    ingestor = Ingestor(settings, store, jobs, workdir=Path("/tmp"))
+    results = []
+    for ready in ready_events_from_records(event):
+        result = ingestor.handle_ready(ready)
+        if result.status == CREATED and result.job:
+            start_execution(result.job, FULL)
+        results.append(result.as_dict())
+    return {"results": results}
+
+
+def reprocess(event, settings: Settings | None = None) -> dict:
+    _, jobs = _stores()
+    job = jobs.get_job(event["project_key"], event["job_id"])
+    if job is None:
+        return {"error": "job not found"}
+    start_execution(job, event.get("scope", FULL), event.get("reason", ""))
+    return {"started": job.pk}
+
+
+def publish(event, settings: Settings | None = None) -> dict:
+    settings = settings or Settings.from_env()
+    store, jobs = _stores()
+    if settings.youtube_mode == "real":
+        import boto3
+
+        raw = boto3.client("secretsmanager").get_secret_value(SecretId=os.environ["YOUTUBE_SECRET"])["SecretString"]
+        adapter = RealYouTubeAdapter.from_secret(raw)
+    else:
+        adapter = FakeYouTubeAdapter()
+    outcomes = Publisher(settings, store, jobs, adapter, workdir=Path("/tmp")).run_due()
+    return {"outcomes": [o.__dict__ for o in outcomes]}
+
+
+def console(event, settings: Settings | None = None) -> dict:
+    settings = settings or Settings.from_env()
+    store, jobs = _stores()
+    allowed = tuple(v for v in os.environ.get("CONSOLE_ALLOWED_USERS", "").split(",") if v)
+    app = Console(settings, jobs, store, ReviewService(settings, jobs), GatewayJwtAuthenticator(allowed),
+                  on_reprocess=lambda job, scope, reason: start_execution(job, scope, reason))
+    return response_to_lambda(app.handle(request_from_lambda(event)))
 
 
 def handler(event, context):
-    action = event.get("action") or ("ingest" if "Records" in event or "detail" in event else "")
-    return {"ingest": ingest, "probe_summary": probe_summary,
-            "finalize": finalize, "fail": fail}[action](event)
+    action = event.get("action") if isinstance(event, dict) else None
+    if not action:
+        if "requestContext" in event:
+            action = "console"
+        elif "Records" in event or "detail" in event:
+            action = "ingest"
+    return {"ingest": ingest, "reprocess": reprocess, "publish": publish, "console": console}[action](event)

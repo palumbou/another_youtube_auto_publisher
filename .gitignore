@@ -33,3 +33,4 @@ infra/build/
 
 # Redistributable test media is the one exception to the media ignore rule
 !tests/fixtures/tiny.mp4
+uv.lock
