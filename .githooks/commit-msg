@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Rejects messages that do not follow Conventional Commits 1.0.0, and any
+# attribution to an AI assistant. See Docs/BRANCHING.md and CLAUDE.md.
+set -euo pipefail
+
+msg_file="$1"
+msg="$(cat "$msg_file")"
+
+# Skip the merge commits Git generates itself
+if printf '%s' "$msg" | head -1 | grep -qE '^(Merge|Revert) '; then
+  exit 0
+fi
+
+subject="$(printf '%s' "$msg" | sed -n '1p')"
+
+types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+if ! printf '%s' "$subject" | grep -qE "^($types)(\([a-z0-9._/-]+\))?!?: .+"; then
+  echo "commit-msg: subject does not follow Conventional Commits 1.0.0." >&2
+  echo "  received: $subject" >&2
+  echo "  expected: <type>(<scope>): <short description in english, lowercase, imperative>" >&2
+  echo "  types:    $types" >&2
+  exit 1
+fi
+
+if [ "${#subject}" -gt 72 ]; then
+  echo "commit-msg: subject too long (${#subject} characters, max 72)." >&2
+  exit 1
+fi
+
+# No AI attribution anywhere: subject, body, trailers.
+ai_pattern='(claude|anthropic|copilot|chatgpt|openai|co-authored-by:[[:space:]]*(claude|anthropic)|generated-by|assisted-by|generated with|made with ai|ai-generated)'
+if printf '%s' "$msg" | grep -qiE "$ai_pattern"; then
+  echo "commit-msg: the message mentions or credits an AI assistant." >&2
+  echo "  remove every mention and every attribution trailer." >&2
+  exit 1
+fi
+
+exit 0
