@@ -46,7 +46,7 @@ No pull request was opened and `master` was not touched: merging is the owner's 
 | Check | Status | Command / evidence |
 |---|---|---|
 | Lint | PASS | `.venv/bin/ruff check .` → `All checks passed!` |
-| Unit + integration suite | PASS | `.venv/bin/pytest -q` → `326 passed in 227.80s (0:03:47)` (`docs/evidence/pytest-final.txt`) |
+| Unit + integration suite | PASS | `.venv/bin/pytest -q` → `329 passed in 225.23s (0:03:45)` (`docs/evidence/pytest-final.txt`) |
 | Contract fixtures (schema Draft 2020-12, invalid fixtures with stable codes) | PASS | `tests/test_contract.py` (15 tests) |
 | Duplicate / out-of-order READY events → one job | PASS | `tests/test_ingest.py::test_duplicate_and_out_of_order_events_create_one_job` |
 | Pre-cutover READY ignored; missing READY ignored | PASS | `test_pre_cutover_ready_is_ignored`, `test_missing_ready_is_ignored` |
@@ -69,6 +69,7 @@ No pull request was opened and `master` was not touched: merging is the owner's 
 | YouTube client: resumable upload, 308 continuation, publishAt only with private, typed auth/quota errors | PASS | `tests/test_youtube.py` |
 | End-to-end on a newly generated fixture (ingest ×2, reject METADATA_ONLY, reprocess, approve, schedule, fake upload ×2, UPLOADED_PRIVATE) | PASS | `python -m autopublisher.local e2e` → `docs/evidence/e2e-local-run.json` (41.7 s) |
 | Local stack starts and serves the console | PASS | `docs/evidence/serve-smoke.log` (healthz 200, login 303, wrong password 401) |
+| CLI subcommands persist their effect (confirm on a Short writes the flag and audits `METADATA_EDITED` with `asset_id`; approve refuses unconfirmed assets; reject/schedule/publish round trip) | PASS | `tests/test_local.py` (regression for the `confirm --asset <short>` defect found in the cross-project run) |
 | OpenTofu fmt + validate | PASS | `docs/evidence/tofu-validate.txt` |
 | OpenTofu plan / apply | BLOCKED | no AWS credentials on this host and no deployment authorization or recorded budget |
 | Worker container image build | NOT RUN | no Docker daemon in this session (podman present, build not attempted); the Dockerfile is the only untested artefact |
@@ -100,7 +101,7 @@ See `THIRD_PARTY_NOTICES.md`. Runtime: jsonschema (MIT). Optional: boto3 (Apache
 
 ## Performance evidence
 
-Real job: 296.6 s 1080p master → ingest + FULL revision with three 1080×1920 Shorts and three thumbnails in 4 min 10 s wall clock (libopenh264, single workstation). Local e2e: 42 s 1080p master → ingest + FULL revision (transcript mock, analysis mock, one 1080×1920 Short with captions and loudness normalisation, thumbnail, verification) + METADATA_ONLY revision + two fake uploads in 41.7 s wall clock on a workstation with libopenh264. Test suite: 326 tests in 228 s, dominated by real ffmpeg renders.
+Real job: 296.6 s 1080p master → ingest + FULL revision with three 1080×1920 Shorts and three thumbnails in 4 min 10 s wall clock (libopenh264, single workstation). Local e2e: 42 s 1080p master → ingest + FULL revision (transcript mock, analysis mock, one 1080×1920 Short with captions and loudness normalisation, thumbnail, verification) + METADATA_ONLY revision + two fake uploads in 41.7 s wall clock on a workstation with libopenh264. Test suite: 329 tests in 225 s, dominated by real ffmpeg renders.
 
 ## Open blockers
 

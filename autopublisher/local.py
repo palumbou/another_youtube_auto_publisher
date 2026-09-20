@@ -283,7 +283,11 @@ def main(argv: list[str] | None = None) -> int:
         changes = {"owner_confirmed_audience": True}
         if args.synthetic:
             changes["owner_confirmed_synthetic"] = True
-        out = stack.review.update_metadata(project, args.job, args.asset, changes, CLI_ACTOR).master_metadata if args.asset == "master" else "ok"
+        revision = stack.review.update_metadata(project, args.job, args.asset, changes, CLI_ACTOR)
+        meta = revision.master_metadata if args.asset == "master" else revision.asset(args.asset).metadata
+        out = {"job_id": args.job, "asset_id": args.asset, "revision": revision.number,
+               "owner_confirmed_audience": meta.get("owner_confirmed_audience", False),
+               "owner_confirmed_synthetic": meta.get("owner_confirmed_synthetic", False)}
     elif args.command == "approve":
         out = stack.review.approve_selected(project, args.job, CLI_ACTOR, include_master=args.master, short_ids=args.short).state
     elif args.command == "reject":
