@@ -1,3 +1,6 @@
+> **AI-assisted development**  
+> This project uses AI-assisted tools during development under continuous human supervision. Architectural, editorial, security, and release decisions remain subject to human review.
+
 # another-youtube-auto-publisher
 
 Fully automated YouTube publishing on AWS: drop a raw video in S3, the pipeline

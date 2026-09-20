@@ -1,3 +1,6 @@
+> **Sviluppo assistito dall'intelligenza artificiale**  
+> Questo progetto utilizza strumenti di intelligenza artificiale durante lo sviluppo, sotto continua supervisione umana. Le decisioni architetturali, editoriali, di sicurezza e di rilascio restano soggette a revisione umana.
+
 # another-youtube-auto-publisher
 
 Pubblicazione YouTube completamente automatizzata su AWS: carichi un video
