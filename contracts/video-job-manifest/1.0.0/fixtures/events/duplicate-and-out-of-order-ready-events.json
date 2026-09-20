@@ -1,0 +1,26 @@
+{
+  "description": "The same READY event delivered three times, once with an earlier event time; exactly one job must exist afterwards.",
+  "events": [
+    {
+      "bucket": "fixture-bucket",
+      "key": "incoming/quiz-al-volo/qav-20260919-0001/READY",
+      "version_id": "ready-v1",
+      "event_time": "2026-09-19T12:05:00Z",
+      "event_name": "ObjectCreated:Put"
+    },
+    {
+      "bucket": "fixture-bucket",
+      "key": "incoming/quiz-al-volo/qav-20260919-0001/READY",
+      "version_id": "ready-v1",
+      "event_time": "2026-09-19T12:04:59Z",
+      "event_name": "ObjectCreated:Put"
+    },
+    {
+      "bucket": "fixture-bucket",
+      "key": "incoming/quiz-al-volo/qav-20260919-0001/READY",
+      "version_id": "ready-v1",
+      "event_time": "2026-09-19T12:05:00Z",
+      "event_name": "ObjectCreated:Put"
+    }
+  ]
+}

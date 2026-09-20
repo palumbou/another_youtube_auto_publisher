@@ -1,0 +1,11 @@
+{
+  "description": "READY object created before cutover_at; must be ignored with PRE_CUTOVER_JOB.",
+  "cutover_at": "2026-09-20T00:00:00Z",
+  "event": {
+    "bucket": "fixture-bucket",
+    "key": "incoming/quiz-al-volo/qav-20260919-0001/READY",
+    "version_id": "ready-v1",
+    "event_time": "2026-09-19T12:05:00Z",
+    "event_name": "ObjectCreated:Put"
+  }
+}

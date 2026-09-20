@@ -10,12 +10,13 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 authors = [{ name = "Ugo Palumbo" }]
-dependencies = []
+dependencies = ["jsonschema>=4.23"]
 
 [project.optional-dependencies]
 aws = ["boto3>=1.35"]
 dev = [
     "pytest>=8.0",
+    "rfc3339-validator>=0.1",
     "ruff>=0.6",
     "boto3>=1.35",
 ]

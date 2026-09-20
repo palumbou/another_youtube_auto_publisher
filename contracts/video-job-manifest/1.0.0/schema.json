@@ -1,0 +1,443 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quizalvolo.app/schemas/video-job-manifest/1.0.0.json",
+  "title": "Video Job Manifest",
+  "description": "Versioned producer-to-publisher contract for a master video and its Short candidates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "project_key",
+    "channel_profile",
+    "created_at",
+    "language",
+    "source",
+    "content",
+    "segments",
+    "short_candidates",
+    "rights",
+    "youtube",
+    "rendering",
+    "producer"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+    },
+    "project_key": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+    },
+    "channel_profile": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_name",
+        "mime_type",
+        "sha256",
+        "duration_ms",
+        "width",
+        "height",
+        "frame_rate"
+      ],
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+\\.(mp4|mov|mkv|webm)$"
+        },
+        "mime_type": {
+          "type": "string",
+          "enum": ["video/mp4", "video/quicktime", "video/x-matroska", "video/webm"]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 1000
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 320
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 240
+        },
+        "frame_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 240
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "summary", "question_ids"],
+      "properties": {
+        "episode_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "title_hint": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "question_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "source_links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceLink"
+          },
+          "uniqueItems": true,
+          "default": []
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "short_candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/shortCandidate"
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_owner_confirmed", "assets"],
+      "properties": {
+        "source_owner_confirmed": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assetRights"
+          }
+        }
+      }
+    },
+    "youtube": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_language",
+        "made_for_kids",
+        "contains_synthetic_media",
+        "notify_subscribers"
+      ],
+      "properties": {
+        "default_language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+        },
+        "made_for_kids": {
+          "type": "boolean"
+        },
+        "contains_synthetic_media": {
+          "type": "boolean"
+        },
+        "notify_subscribers": {
+          "type": "boolean"
+        },
+        "category_hint": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "playlist_hint": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "hashtags_hint": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "pattern": "^#[^\\s#]{1,99}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "rendering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["renderer", "renderer_version", "template_id", "template_version"],
+      "properties": {
+        "renderer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "renderer_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "template_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "template_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "git_commit", "catalog_version"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "git_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2000
+        }
+      }
+    },
+    "normalizedRect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_id", "type", "start_ms", "end_ms"],
+      "properties": {
+        "segment_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "HOOK",
+            "QUESTION",
+            "COUNTDOWN",
+            "ANSWER",
+            "EXPLANATION",
+            "TRANSITION",
+            "OUTRO",
+            "OTHER"
+          ]
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "question_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "region_of_interest": {
+          "$ref": "#/$defs/normalizedRect"
+        },
+        "text_safe_area": {
+          "$ref": "#/$defs/normalizedRect"
+        }
+      }
+    },
+    "shortCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "segment_ids",
+        "start_ms",
+        "end_ms",
+        "priority",
+        "target_aspect_ratio"
+      ],
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+        },
+        "segment_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "uniqueItems": true
+        },
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "target_aspect_ratio": {
+          "const": "9:16"
+        },
+        "title_hint": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "crop_region": {
+          "$ref": "#/$defs/normalizedRect"
+        },
+        "must_include_explanation": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "assetRights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_id", "type", "licence", "allowed_for_youtube"],
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "type": {
+          "type": "string",
+          "enum": ["IMAGE", "AUDIO", "FONT", "VIDEO", "OTHER"]
+        },
+        "licence": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2000
+        },
+        "allowed_for_youtube": {
+          "type": "boolean"
+        },
+        "attribution": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    }
+  }
+}
