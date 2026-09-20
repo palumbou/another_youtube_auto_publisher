@@ -178,15 +178,6 @@ def probe(video: Path, workdir: Path) -> dict:
     }
 
 
-def cut(video: Path, plan: dict, workdir: Path) -> dict:
-    results = []
-    for short in plan["shorts"]:
-        out = workdir / f"{short['short_id']}.mp4"
-        render_short(video, float(short["start"]), float(short["end"]), out)
-        results.append({"short_id": short["short_id"], "file": out.name})
-    return {"shorts": results}
-
-
 # ---------------------------------------------------------------------------
 # S3-driven entrypoint (Fargate) and local CLI
 
