@@ -27,6 +27,26 @@ class YouTubeError(RuntimeError):
     pass
 
 
+class YouTubeAuthError(YouTubeError):
+    """Refresh token invalid or revoked: an owner must re-authorize (recoverable state)."""
+
+
+class YouTubeQuotaError(YouTubeError):
+    """Daily quota exhausted: surface it, do not retry until the reset."""
+
+
+THUMBNAILS_URL = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
+
+
+def classify(status: int, body: bytes) -> type[YouTubeError]:
+    text = body[:2000].decode("utf-8", "replace")
+    if status in (401,) or "invalid_grant" in text or "invalid_token" in text:
+        return YouTubeAuthError
+    if status == 403 and ("quotaExceeded" in text or "dailyLimitExceeded" in text or "uploadLimitExceeded" in text):
+        return YouTubeQuotaError
+    return YouTubeError
+
+
 class YouTubeClient:
     def __init__(self, client_id: str, client_secret: str, refresh_token: str):
         self.client_id = client_id
@@ -59,7 +79,7 @@ class YouTubeClient:
             {"Content-Type": "application/x-www-form-urlencoded"},
         )
         if status != 200:
-            raise YouTubeError(f"token refresh failed ({status}): {body[:500]!r}")
+            raise classify(status, body)(f"token refresh failed ({status}): {body[:300]!r}")
         self._access_token = json.loads(body)["access_token"]
 
     def _call(self, method: str, url: str, data: bytes | None = None,
@@ -76,21 +96,37 @@ class YouTubeClient:
 
     # -- API ----------------------------------------------------------------
 
-    def upload(self, reader, size: int, *, title: str, description: str,
-               tags: list[str], privacy: str,
-               category_id: str = DEFAULT_CATEGORY) -> str:
+    @staticmethod
+    def build_body(metadata: dict, privacy: str, publish_at: str = "") -> dict:
+        """videos.insert body: snippet and status from reviewed metadata."""
+        snippet = {
+            "title": metadata["title"],
+            "description": metadata.get("description", ""),
+            "tags": metadata.get("tags", []),
+            "categoryId": metadata.get("category_id", DEFAULT_CATEGORY),
+        }
+        if metadata.get("default_language"):
+            snippet["defaultLanguage"] = metadata["default_language"]
+            snippet["defaultAudioLanguage"] = metadata["default_language"]
+        status = {
+            "privacyStatus": privacy,
+            "selfDeclaredMadeForKids": bool(metadata.get("made_for_kids", False)),
+            "containsSyntheticMedia": bool(metadata.get("contains_synthetic_media", False)),
+        }
+        if publish_at:
+            if privacy != "private":
+                raise YouTubeError("publishAt requires privacyStatus=private")
+            status["publishAt"] = publish_at
+        return {"snippet": snippet, "status": status}
+
+    def upload(self, reader, size: int, *, metadata: dict, privacy: str = "private",
+               publish_at: str = "", notify_subscribers: bool = False,
+               on_progress=None) -> str:
         """Resumable upload streamed from `reader` (needs .read(n)). Returns video id."""
-        metadata = json.dumps({
-            "snippet": {
-                "title": title,
-                "description": description,
-                "tags": tags,
-                "categoryId": category_id,
-            },
-            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-        }).encode()
-        status, headers, body = self._call(
-            "POST", UPLOAD_URL, metadata,
+        body = json.dumps(self.build_body(metadata, privacy, publish_at)).encode()
+        url = UPLOAD_URL + f"&notifySubscribers={'true' if notify_subscribers else 'false'}"
+        status, headers, resp = self._call(
+            "POST", url, body,
             {
                 "Content-Type": "application/json; charset=UTF-8",
                 "X-Upload-Content-Type": "video/mp4",
@@ -98,7 +134,7 @@ class YouTubeClient:
             },
         )
         if status != 200:
-            raise YouTubeError(f"upload init failed ({status}): {body[:500]!r}")
+            raise classify(status, resp)(f"upload init failed ({status}): {resp[:300]!r}")
         session_url = headers.get("Location") or headers.get("location")
         if not session_url:
             raise YouTubeError("upload init returned no session Location")
@@ -119,18 +155,40 @@ class YouTubeClient:
             if status in (200, 201):
                 return json.loads(body)["id"]
             if status != 308:
-                raise YouTubeError(f"chunk upload failed ({status}): {body[:500]!r}")
+                raise classify(status, body)(f"chunk upload failed ({status}): {body[:300]!r}")
             offset = end + 1
+            if on_progress:
+                on_progress(offset, size)
         raise YouTubeError("upload finished without a completion response")
 
-    def set_privacy(self, video_id: str, privacy: str) -> None:
-        body = json.dumps({
-            "id": video_id,
-            "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
-        }).encode()
+    def get_video(self, video_id: str) -> dict:
+        status, _, resp = self._call("GET", f"{VIDEOS_URL}?part=status,snippet,processingDetails&id={video_id}")
+        if status != 200:
+            raise classify(status, resp)(f"videos.list failed ({status}): {resp[:300]!r}")
+        items = json.loads(resp).get("items", [])
+        if not items:
+            raise YouTubeError(f"video {video_id} not found on the channel")
+        return items[0]
+
+    def update_status(self, video_id: str, privacy: str, publish_at: str = "",
+                      made_for_kids: bool = False, synthetic: bool = False) -> None:
+        status_body = {"privacyStatus": privacy, "selfDeclaredMadeForKids": made_for_kids,
+                       "containsSyntheticMedia": synthetic}
+        if publish_at:
+            if privacy != "private":
+                raise YouTubeError("publishAt requires privacyStatus=private")
+            status_body["publishAt"] = publish_at
+        body = json.dumps({"id": video_id, "status": status_body}).encode()
         status, _, resp = self._call(
             "PUT", f"{VIDEOS_URL}?part=status", body,
             {"Content-Type": "application/json; charset=UTF-8"},
         )
         if status != 200:
-            raise YouTubeError(f"set_privacy({video_id}) failed ({status}): {resp[:500]!r}")
+            raise classify(status, resp)(f"videos.update({video_id}) failed ({status}): {resp[:300]!r}")
+
+    def set_thumbnail(self, video_id: str, image: bytes, content_type: str = "image/jpeg") -> None:
+        status, _, resp = self._call(
+            "POST", f"{THUMBNAILS_URL}?videoId={video_id}", image, {"Content-Type": content_type},
+        )
+        if status != 200:
+            raise classify(status, resp)(f"thumbnails.set({video_id}) failed ({status}): {resp[:300]!r}")
